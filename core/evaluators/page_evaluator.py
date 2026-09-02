@@ -301,3 +301,45 @@ class PageEvaluator:
                 await self.page.close()
         except Exception as e:
             logger.error(f"Cleanup failed: {str(e)}")
+
+
+class RegistryPageEvaluator:
+    """Evaluates a single page using the analyzer registry.
+
+    This is the new recommended replacement for PageEvaluator.
+    It uses AnalysisContext + AnalyzerRegistry for modular analysis.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        html: str,
+        page,
+        body_text: str,
+        custom_criteria: Optional[Dict[str, Any]] = None,
+    ):
+        self.url = url
+        self.html = html
+        self.page = page
+        self.body_text = body_text
+        self.criteria = custom_criteria or {}
+
+    async def evaluate(self) -> AnalysisResponse:
+        """Run registry-based analysis and return AnalysisResponse."""
+        from ..analyzers import build_default_registry
+        from ..services.evaluation_service import EvaluationService
+        from ..models.context import AnalysisContext
+
+        registry = build_default_registry()
+        service = EvaluationService(registry=registry)
+
+        context = AnalysisContext(
+            url=self.url,
+            html=self.html,
+            page=self.page,
+            body_text=self.body_text,
+            soup=BeautifulSoup(self.html, "html.parser"),
+            metadata=self.criteria,
+        )
+
+        return await service.evaluate(context)

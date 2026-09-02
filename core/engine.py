@@ -1,10 +1,15 @@
+"""
+Core engine with standardized AnalysisResponse output.
+
+Heavy dependencies are imported lazily to reduce startup cost on low-spec machines.
+"""
 import os
 import asyncio
 import json
 import logging
 from datetime import datetime
 from collections import Counter
-from typing import Optional, List, Set, Tuple, Dict
+from typing import Optional, List, Set, Tuple, Dict, Any
 from urllib.parse import urlparse, urljoin, parse_qs
 from heapq import heappush, heappop
 
@@ -14,49 +19,54 @@ import textstat
 from fastapi import FastAPI, HTTPException, WebSocket
 from pydantic import BaseModel, BaseSettings
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
 
-# For caching heavy computations
-from aiocache import cached
+# Lazy imports for heavy/binary dependencies
+# These are imported inside functions to avoid startup cost when not needed
+def _lazy_import_playwright():
+    from playwright.async_api import async_playwright
+    return async_playwright
 
-# For accessibility tool integration (using axe-playwright wrapper)
-from axe_playwright_python.sync_playwright import Axe
+def _lazy_import_axe():
+    from axe_playwright_python.sync_playwright import Axe
+    return Axe
 
-# For Lighthouse integration
-import lighthouse_pyasync
+def _lazy_import_lighthouse():
+    import lighthouse_pyasync
+    return lighthouse_pyasync
 
-# For security scanning with OWASP ZAP
-from zapv2 import ZAPv2
+def _lazy_import_zap():
+    from zapv2 import ZAPv2
+    return ZAPv2
 
-# ------------------- Additional Imports (Advanced NLP, CSS, Lint, etc.) -------------------
-import spacy
-from textblob import TextBlob
-import cssutils
-from cssutils import css
-from io import StringIO
-import pylint.lint
-from pylint.reporters.text import TextReporter
+def _lazy_import_spacy():
+    import spacy
+    return spacy
 
-# ------------------- Configuration Management -------------------
-class Settings(BaseSettings):
-    evaluation_timeout: int = 60
-    max_concurrent: int = 10
-    zap_scan_depth: int = 5
-    nlp_model: str = "en_core_web_lg"
-    max_workers: int = 20  # For scalability
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+def _lazy_import_textblob():
+    from textblob import TextBlob
+    return TextBlob
+
+# Core output contract
+from ..models.report import AnalysisResponse, AnalyzerResult
+from ..config import Settings
 
 config = Settings()
 
-# ------------------- Load NLP Models -------------------
-try:
-    nlp = spacy.load(config.nlp_model)
-except OSError:
-    from spacy.cli import download
-    download(config.nlp_model)
-    nlp = spacy.load(config.nlp_model)
+# ------------------- Load NLP Models Lazily -------------------
+_nlp = None
+
+def get_nlp():
+    """Lazy-load spaCy model only when first requested."""
+    global _nlp
+    if _nlp is None:
+        spacy = _lazy_import_spacy()
+        try:
+            _nlp = spacy.load(config.nlp_model)
+        except OSError:
+            from spacy.cli import download
+            download(config.nlp_model)
+            _nlp = spacy.load(config.nlp_model)
+    return _nlp
 
 # Inclusive language database
 INCLUSIVE_LANGUAGE_DB = {
@@ -118,6 +128,7 @@ class ReportGenerator:
 # ------------------- Caching for Heavy Computations -------------------
 @cached(ttl=3600)
 async def get_page_metrics_cached(url: str) -> dict:
+    async_playwright = _lazy_import_playwright()
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
@@ -131,6 +142,7 @@ async def get_page_metrics_cached(url: str) -> dict:
 
 # ------------------- Accessibility Integration with Axe -------------------
 async def run_axe_accessibility(page) -> dict:
+    Axe = _lazy_import_axe()
     axe = Axe()
     results = await axe.run(page)
     return {
@@ -141,8 +153,11 @@ async def run_axe_accessibility(page) -> dict:
 
 # ------------------- Performance Integration with Lighthouse -------------------
 async def run_lighthouse_audit(url: str) -> dict:
-    lh = lighthouse_pyasync.Lighthouse(url)
-    report = await lh.audit()
+    if not config.enable_lighthouse:
+        return {"skipped": True, "reason": "Lighthouse disabled via config"}
+    lh = _lazy_import_lighthouse()
+    lighthouse = lh.Lighthouse(url)
+    report = await lighthouse.audit()
     return {
         "core_web_vitals": report['categories']['performance']['auditRefs'],
         "scores": {
@@ -153,7 +168,10 @@ async def run_lighthouse_audit(url: str) -> dict:
 
 # ------------------- Security Scanning with OWASP ZAP -------------------
 async def run_security_scan(url: str) -> dict:
-    zap = ZAPv2(apikey=os.getenv('ZAP_API_KEY', ''))
+    if not config.enable_zap:
+        return {"skipped": True, "reason": "ZAP disabled via config"}
+    zap_cls = _lazy_import_zap()
+    zap = zap_cls(apikey=os.getenv('ZAP_API_KEY', ''))
     zap.urlopen(url)
     await asyncio.sleep(2)  # Allow time for spidering
     alerts = zap.core.alerts()
@@ -166,8 +184,10 @@ async def run_security_scan(url: str) -> dict:
 class LanguageAnalyzer:
     @staticmethod
     def analyze_text_quality(text: str) -> dict:
-        doc = nlp(text)
+        nlp = get_nlp()
+        TextBlob = _lazy_import_textblob()
         blob = TextBlob(text)
+        doc = nlp(text)
         grammar_errors = []
         for sent in doc.sents:
             if sent[-1].text not in {'.', '!', '?'}:
@@ -218,6 +238,7 @@ class CodeQualityAnalyzer:
     @staticmethod
     def analyze_css_quality(css_content: str) -> dict:
         issues = []
+        cssutils, css = _lazy_import_cssutils()
         sheet = cssutils.parseString(css_content)
         for rule in sheet:
             if isinstance(rule, css.CSSStyleRule):
@@ -230,6 +251,7 @@ class CodeQualityAnalyzer:
     @staticmethod
     def run_pylint_analysis(code: str) -> dict:
         issues = []
+        pylint_lib, TextReporter = _lazy_import_pylint()
         class StringWriter:
             def __init__(self):
                 self.content = []
@@ -238,7 +260,7 @@ class CodeQualityAnalyzer:
             def read(self):
                 return "\n".join(self.content)
         reporter = TextReporter(StringWriter())
-        pylint.lint.Run(["--disable=all", "--enable=E,W"], reporter=reporter, exit=False)
+        pylint_lint.Run(["--disable=all", "--enable=E,W"], reporter=reporter, exit=False)
         return {"python_issues": reporter.writer.read().splitlines()}
 
 # ------------------- Expanded UX/Usability Evaluation -------------------
@@ -385,6 +407,7 @@ class UserExperience:
 class AdvancedNLPAnalysis:
     @staticmethod
     def detect_translation_quality(text: str) -> dict:
+        nlp = get_nlp()
         doc = nlp(text)
         # Dummy implementations – replace with real models or heuristics
         translation_likelihood = 0.8
@@ -395,6 +418,7 @@ class AdvancedNLPAnalysis:
         }
     @staticmethod
     def analyze_content_strategy(text: str) -> dict:
+        nlp = get_nlp()
         doc = nlp(text)
         keyword_density = 0.05
         content_gaps = ["Missing topic X"]
@@ -466,6 +490,8 @@ class PageEvaluator:
       - Performance metrics via Lighthouse and Playwright
       - Security scanning via OWASP ZAP and advanced security enhancements
       - NLP, code quality, UX, SEO, and various heuristic checks
+
+    Always returns AnalysisResponse for a stable downstream contract.
     """
     def __init__(self, url: str, html: str, page, body_text: str, custom_criteria: dict = {}):
         self.url = url
@@ -476,6 +502,7 @@ class PageEvaluator:
         self.soup = BeautifulSoup(self.html, "html.parser")
         self.design_data = {}
         self.check_design_tool_integration()
+
     def check_design_tool_integration(self):
         qs = parse_qs(urlparse(self.url).query)
         if "design_source" in qs:
@@ -486,6 +513,45 @@ class PageEvaluator:
             elif source == "sketch" and "file_url" in qs:
                 file_url = qs["file_url"][0]
                 self.design_data = asyncio.run(DesignToolIntegration.import_sketch(file_url))
+
+    def _normalize_raw_results(self, raw_results: Dict[str, Any]) -> AnalysisResponse:
+        """Normalize legacy dict/string analyzer outputs into AnalysisResponse."""
+        analyzers: List[AnalyzerResult] = []
+        overall_score = 0.0
+        status = "needs_review"
+
+        if isinstance(raw_results, dict) and "results" in raw_results:
+            results = raw_results["results"]
+            if isinstance(results, dict):
+                scores = []
+                for key, value in results.items():
+                    if isinstance(value, dict):
+                        score = float(value.get("score", 0))
+                        scores.append(score)
+                        analyzers.append(AnalyzerResult(
+                            name=key,
+                            score=score,
+                            status="passed" if score >= 75 else "warning" if score >= 50 else "failed",
+                            issues=value.get("issues", []),
+                            recommendations=value.get("recommendations", []),
+                            metrics=value.get("metrics", {}),
+                            details=value.get("details", {}),
+                        ))
+                if scores:
+                    overall_score = sum(scores) / len(scores)
+                    status = "passed" if overall_score >= 75 else "warning" if overall_score >= 50 else "failed"
+
+        return AnalysisResponse(
+            url=self.url,
+            overall_score=overall_score,
+            status=status,
+            analyzers=analyzers,
+            metadata={
+                "source": "page_evaluator",
+                "design_data_keys": list(self.design_data.keys()) if self.design_data else [],
+            },
+        )
+
     async def evaluate(self) -> dict:
         results = {}
         # Language Analysis
@@ -557,7 +623,10 @@ class PageEvaluator:
         # Code Quality Checks
         results["code_optimization"] = self.check_code_optimization()
         results["code_consistency"] = self.check_code_consistency()
-        return {"url": self.url, "results": results, "design_data": self.design_data}
+
+        # Wrap legacy dict output into the standardized contract
+        legacy_payload = {"url": self.url, "results": results, "design_data": self.design_data}
+        return self._normalize_raw_results(legacy_payload).to_dict()
 
 # ------------------- WebsiteEvaluator Class with Performance Optimization -------------------
 class WebsiteEvaluator:
@@ -616,6 +685,7 @@ class WebsiteEvaluator:
         pages = await self.crawl_all_subpages() if crawl else [self.root_url]
         logger.info(f"Crawling complete. {len(pages)} page(s) to evaluate.")
         evaluations = []
+        async_playwright = _lazy_import_playwright()
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             for url in pages:
@@ -699,6 +769,50 @@ class WebsiteEvaluator:
             recs.append("Ensure your site is served over HTTPS.")
         return recs
 
+# ------------------- Registry-Based Page Evaluator -------------------
+class RegistryPageEvaluator:
+    """Evaluates a single page using the analyzer registry.
+
+    This is the new replacement for PageEvaluator. It uses the
+    AnalysisContext + AnalyzerRegistry architecture for modular,
+    composable analysis.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        html: str,
+        page,
+        body_text: str,
+        custom_criteria: Optional[Dict[str, Any]] = None,
+    ):
+        self.url = url
+        self.html = html
+        self.page = page
+        self.body_text = body_text
+        self.criteria = custom_criteria or {}
+
+    async def evaluate(self) -> AnalysisResponse:
+        """Run registry-based analysis and return AnalysisResponse."""
+        from ..analyzers import build_default_registry
+        from ..services.evaluation_service import EvaluationService
+        from ..models.context import AnalysisContext
+
+        registry = build_default_registry()
+        service = EvaluationService(registry=registry)
+
+        context = AnalysisContext(
+            url=self.url,
+            html=self.html,
+            page=self.page,
+            body_text=self.body_text,
+            soup=BeautifulSoup(self.html, "html.parser"),
+            metadata=self.criteria,
+        )
+
+        return await service.evaluate(context)
+
+
 # ------------------- Utility: Fetch Page HTML -------------------
 async def fetch_page_html(url: str) -> str:
     async with aiohttp.ClientSession() as session:
@@ -733,7 +847,7 @@ class EnhancedEvaluationReport(BaseModel):
     detailed_report: dict
     learning_resources: dict
     language_score: float
-    code_quality_score: float
+    ux_enhanced: dict
     ux_enhanced: dict
     cognitive_load_score: float
 
@@ -766,7 +880,6 @@ async def enhanced_evaluation(request: EvaluationRequest):
             detailed_report=report["detailed_report"],
             learning_resources=report["learning_resources"],
             language_score=calculate_language_score(report),
-            code_quality_score=calculate_code_quality_score(report),
             ux_enhanced=report.get("ux_enhanced", {}),
             cognitive_load_score=sum(
                 p["results"]["ux_enhanced"]["cognitive_load"]["complexity_score"] 

@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from playwright.async_api import async_playwright
-from core.analyzers.page_evaluator import PageEvaluator
-from core.analyzers.report_generator import ReportGenerator
+from core.evaluators import RegistryPageEvaluator
+from core.utils.pdf_exporter import PDFExporter
+import json
 import logging
 from typing import List
 
@@ -24,11 +25,11 @@ async def evaluate(request: EvaluationRequest):
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
             await page.goto(request.url, timeout=60000)
-            evaluator = PageEvaluator(request.url, page, request.design_data)
+            evaluator = RegistryPageEvaluator(request.url, page, request.design_data)
             report = await evaluator.evaluate()
             await page.close()
             await browser.close()
-        return report
+        return report.to_dict() if hasattr(report, "to_dict") else report
     except Exception as e:
         logger.error(f"Evaluation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
@@ -40,11 +41,16 @@ async def evaluate_pdf(request: EvaluationRequest):
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
             await page.goto(request.url, timeout=60000)
-            evaluator = PageEvaluator(request.url, page, request.design_data)
+            evaluator = RegistryPageEvaluator(request.url, page, request.design_data)
             report = await evaluator.evaluate()
             await page.close()
             await browser.close()
-        pdf_bytes = ReportGenerator.generate_pdf(report)
+
+        report_data = report.to_dict() if hasattr(report, "to_dict") else report
+        if isinstance(report_data, str):
+            report_data = json.loads(report_data)
+
+        pdf_bytes = PDFExporter.export_results(report_data)
         return Response(content=pdf_bytes, media_type="application/pdf")
     except Exception as e:
         logger.error(f"PDF export failed: {str(e)}")
@@ -59,9 +65,9 @@ async def evaluate_batch(request: BatchEvaluationRequest):
             try:
                 page = await browser.new_page()
                 await page.goto(url, timeout=60000)
-                evaluator = PageEvaluator(url, page, request.design_data)
+                evaluator = RegistryPageEvaluator(url, page, request.design_data)
                 report = await evaluator.evaluate()
-                results.append({"url": url, "report": report})
+                results.append({"url": url, "report": report.to_dict() if hasattr(report, "to_dict") else report})
                 await page.close()
             except Exception as e:
                 logger.error(f"Batch evaluation failed for {url}: {str(e)}")
@@ -72,7 +78,7 @@ async def evaluate_batch(request: BatchEvaluationRequest):
 @app.get("/trend")
 async def trend():
     # Stub: no real DB, just return dummy trend
-    return ReportGenerator.get_trend_analysis()
+    return {"trend": "no data"}
 
 @app.get("/health")
 async def health():

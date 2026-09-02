@@ -1,12 +1,27 @@
 [build-system]
-requires = ["setuptools>=65.5.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "uibench"
 version = "0.1.0"
-description = "UI Benchmarking Tool"
+description = "Web Interface Analysis & Design System Platform"
 requires-python = ">=3.11"
-authors = [
-    {name = "UIBench Team"}
-] 
+license = {text = "MIT"}
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests", "core/tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+strict = true
+pretty = true
+show_error_codes = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

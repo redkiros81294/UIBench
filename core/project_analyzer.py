@@ -414,66 +414,42 @@ class ProjectAnalyzer:
         
         return list(set(detected))
     
-    async def setup_environment(self):
-        """Async environment setup with proper cleanup"""
-        venv_path = self.root / ".venv"
-        if venv_path.exists():
-            shutil.rmtree(venv_path)
-        
-        # Create virtual environment
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "venv", str(venv_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await proc.wait()
-        
-        # Install requirements
-        req_file = self.root / "requirements.txt"
-        if req_file.exists():
-            pip = venv_path / "bin" / "pip"
-            proc = await asyncio.create_subprocess_exec(
-                str(pip), "install", "-r", str(req_file),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            await proc.wait()
-    
     async def analyze_project(
         self,
-        previous: Optional[Dict] = None
+        previous: Optional[Dict] = None,
+        run_dynamic: bool = False,
+        run_advanced_testing: bool = False,
     ) -> Dict[str, Any]:
         """Main analysis workflow"""
         # File system analysis
         fs_data = await self.evaluator.evaluate()
-        
+
         # Framework detection
         frameworks = await self.detect_frameworks()
-        
-        # Environment setup
-        await self.setup_environment()
-        
-        # Dynamic analysis
-        dynamic_data = await self.run_dynamic_analysis()
-        
-        # Advanced testing analysis
-        mutation_data = await self.mutation_analyzer.analyze(str(self.root))
-        contract_data = await self.contract_analyzer.analyze(str(self.root))
-        fuzz_data = await self.fuzz_analyzer.analyze(str(self.root))
-        
+
+        # Dynamic analysis is opt-in to avoid heavy binary dependencies on low-spec machines
+        dynamic_data: Dict[str, Any] = {}
+        if run_dynamic:
+            dynamic_data = await self.run_dynamic_analysis()
+
+        # Advanced testing analysis is opt-in
+        advanced_testing: Dict[str, Any] = {}
+        if run_advanced_testing:
+            advanced_testing = {
+                "mutation": await self.mutation_analyzer.analyze(str(self.root)),
+                "contract": await self.contract_analyzer.analyze(str(self.root)),
+                "fuzz": await self.fuzz_analyzer.analyze(str(self.root)),
+            }
+
         # Compile results
         results = {
             "timestamp": datetime.utcnow().isoformat(),
             "frameworks": frameworks,
             "static": fs_data,
             "dynamic": dynamic_data,
-            "advanced_testing": {
-                "mutation": mutation_data,
-                "contract": contract_data,
-                "fuzz": fuzz_data
-            }
+            "advanced_testing": advanced_testing,
         }
-        
+
         # Compute diffs
         if previous:
             return {

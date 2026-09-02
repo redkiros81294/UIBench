@@ -1,495 +1,774 @@
-import time
-import textwrap
-import os
+"""
+PDF export for UIBench evaluation reports.
+
+Design:
+- Body text: Nyala font
+- Logo / titles: system font (DejaVu Sans)
+- Brand colors matching UIBench tokens
+- 4-page structure: Cover, Executive Summary, Detailed Analysis, Appendix
+"""
+from __future__ import annotations
+
+import io
 import logging
 from pathlib import Path
-from typing import Dict, Optional
-from reportlab.platypus import PageBreak, Image
+from typing import Any, Dict, List, Optional, Union
+
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import (
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
-try:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import inch, mm
-    from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    REPORTLAB_AVAILABLE = True
-except ImportError:
-    REPORTLAB_AVAILABLE = False
+from core.models.report import AnalysisResponse
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Brand tokens
+# ---------------------------------------------------------------------------
+BG_PRIMARY = colors.HexColor("#0A0F1E")
+BG_SECONDARY = colors.HexColor("#0D1B3E")
+BG_TERTIARY = colors.HexColor("#111827")
+BORDER = colors.HexColor("#1E3A5F")
+BORDER_BRIGHT = colors.HexColor("#2563EB")
+TEXT_PRIMARY = colors.HexColor("#F1F5F9")
+TEXT_SECONDARY = colors.HexColor("#94A3B8")
+TEXT_MUTED = colors.HexColor("#475569")
+CYAN = colors.HexColor("#06B6D4")
+BLUE = colors.HexColor("#2563EB")
+GREEN = colors.HexColor("#10B981")
+AMBER = colors.HexColor("#F59E0B")
+RED = colors.HexColor("#EF4444")
+PURPLE = colors.HexColor("#8B5CF6")
+
+STATUS_COLORS = {
+    "passed": GREEN,
+    "warning": AMBER,
+    "failed": RED,
+    "skipped": TEXT_MUTED,
+    "needs_review": TEXT_SECONDARY,
+}
+
+# ---------------------------------------------------------------------------
+# Font setup
+# ---------------------------------------------------------------------------
+NYALA_PATH = Path.home() / ".fonts" / "nyala.ttf"
+SYSTEM_FONT_PATHS = [
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/TTF/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
+]
+
+_BODY_FONT = "Nyala"
+_LOGO_FONT = "DejaVu-Sans"
+
+
+def _register_fonts() -> tuple[str, str]:
+    """Register Nyala for body and a system font for logo/titles."""
+    body_font = "Helvetica"
+    logo_font = "Helvetica"
+
+    if NYALA_PATH.exists():
+        try:
+            pdfmetrics.registerFont(TTFont("Nyala", str(NYALA_PATH)))
+            body_font = "Nyala"
+        except Exception as exc:
+            logger.warning("Failed to register Nyala font: %s", exc)
+    else:
+        logger.warning("Nyala font not found at %s", NYALA_PATH)
+
+    for path in SYSTEM_FONT_PATHS:
+        if path.exists():
+            try:
+                pdfmetrics.registerFont(TTFont("DejaVu-Sans", str(path)))
+                logo_font = "DejaVu-Sans"
+                break
+            except Exception as exc:
+                logger.warning("Failed to register system font %s: %s", path, exc)
+
+    return body_font, logo_font
+
+
+BODY_FONT, LOGO_FONT = _register_fonts()
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _status_badge(status: str) -> tuple[str, colors.Color]:
+    """Return (label, color) for a status value."""
+    status = (status or "needs_review").lower().strip()
+    color = STATUS_COLORS.get(status, TEXT_SECONDARY)
+    label = status.replace("_", " ").title()
+    return label, color
+
+
+def _normalize_input(
+    data: Union[Dict[str, Any], AnalysisResponse],
+) -> Dict[str, Any]:
+    """Accept AnalysisResponse or dict and return a plain dict."""
+    if isinstance(data, AnalysisResponse):
+        return data.to_dict()
+    if isinstance(data, dict):
+        return data
+    raise TypeError(f"Unsupported report type: {type(data).__name__}")
+
+
+# ---------------------------------------------------------------------------
+# PDFExporter
+# ---------------------------------------------------------------------------
+
 class PDFExporter:
-    """Export evaluation results to PDF format"""
-    
+    """Export UIBench evaluation results to a branded PDF."""
+
     @staticmethod
-    def export_results(results: Dict, filename: Optional[str] = None) -> str:
-        """
-        Export evaluation results to PDF
-        
+    def export_results(
+        results: Union[Dict[str, Any], AnalysisResponse],
+        filename: Optional[str] = None,
+    ) -> bytes:
+        """Generate PDF bytes from evaluation results.
+
         Args:
-            results: Evaluation results dictionary
-            filename: Optional custom filename
+            results: AnalysisResponse or compatible dict.
+            filename: Ignored; retained for backward compatibility.
 
         Returns:
-            Path to the generated PDF file
+            PDF content as bytes.
         """
-        try:
-            if not REPORTLAB_AVAILABLE:
-                raise ImportError("reportlab is required for PDF export. Install with: pip install reportlab")
-        
-            # Generate filename if not provided
-            if not filename:
-                timestamp = time.strftime('%Y%m%d_%H%M%S')
-                filename = f"ui_evaluation_{timestamp}.pdf"
-        
-            # Create PDF document
-            doc = SimpleDocTemplate(filename, pagesize=A4)
-            styles = getSampleStyleSheet()
-            
-            # Create story list at the beginning
-            story = []
+        data = _normalize_input(results)
+        buffer = io.BytesIO()
 
-            # Register Nyala font
-            try:
-                current_dir = Path(__file__).parent
-                nyala_path = current_dir / "Nyala.ttf"
-                
-                if nyala_path.exists():
-                    pdfmetrics.registerFont(TTFont('Nyala', str(nyala_path)))
-                    font_name = 'Nyala'
-                else:
-                    print(f"⚠️ Nyala font not found at: {nyala_path}")
-                    print("⚠️ Using Helvetica as fallback")
-                    font_name = 'Helvetica'
-            except Exception as e:
-                print(f"⚠️ Font loading error: {str(e)}")
-                print("⚠️ Using Helvetica as fallback")
-                font_name = 'Helvetica'
-        
-            # Add introduction page
-            PDFExporter._add_intro_page(story, styles, font_name)
-            story.append(PageBreak())  # Start report on new page
-        
-            # Add report content
-            PDFExporter._add_title(story, styles, font_name)
-            PDFExporter._add_metadata(story, results, styles, font_name)
-            PDFExporter._add_summary(story, results, styles, font_name)
-            PDFExporter._add_analyzers(story, results, styles, font_name)
-            PDFExporter._add_figma_data(story, results, styles, font_name)
-        
-            # Build PDF
-            doc.build(story)
-            return os.path.abspath(filename)
-            
-        except Exception as e:
-            logger.exception("PDF export failed")
-            raise RuntimeError(f"PDF generation error: {str(e)}") from e
-    
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=20 * mm,
+            rightMargin=20 * mm,
+            topMargin=20 * mm,
+            bottomMargin=20 * mm,
+        )
+
+        page_width = doc.width
+        story: List[Any] = []
+
+        # Page 1: Cover
+        PDFExporter._add_cover(story, data, page_width)
+        story.append(PageBreak())
+
+        # Page 2: Executive Summary
+        PDFExporter._add_executive_summary(story, data, page_width)
+        story.append(PageBreak())
+
+        # Page 3+: Detailed Analysis
+        PDFExporter._add_detailed_analysis(story, data, page_width)
+        story.append(PageBreak())
+
+        # Final page: Appendix
+        PDFExporter._add_appendix(story, data, page_width)
+
+        doc.build(story)
+        return buffer.getvalue()
+
+    # ------------------------------------------------------------------
+    # Page 1 — Cover
+    # ------------------------------------------------------------------
+
     @staticmethod
-    def _add_intro_page(story, styles, font_name):
-        """Add professional introduction page with image banner"""
-        # Custom styles with adjusted font sizes
-        intro_title_style = ParagraphStyle(
-            'IntroTitle',
-            fontName=font_name,
-            fontSize=14,  # Max size 14 as requested
-            spaceAfter=10,
+    def _add_cover(story: List[Any], data: Dict[str, Any], page_width: float) -> None:
+        logo_style = ParagraphStyle(
+            "Logo",
+            fontName=LOGO_FONT,
+            fontSize=32,
+            leading=36,
             alignment=TA_CENTER,
-            textColor=colors.darkblue
-        )
-        
-        subtitle_style = ParagraphStyle(
-            'Subtitle',
-            fontName=font_name,
-            fontSize=12,
-            spaceAfter=8,
-            alignment=TA_CENTER,
-            textColor=colors.darkblue
-        )
-        
-        section_style = ParagraphStyle(
-            'Section',
-            fontName=font_name,
-            fontSize=11,  # Normal text size 11 as requested
+            textColor=CYAN,
             spaceAfter=6,
-            spaceBefore=10,
-            textColor=colors.darkblue
         )
-        
+        subtitle_style = ParagraphStyle(
+            "CoverSubtitle",
+            fontName=BODY_FONT,
+            fontSize=13,
+            leading=17,
+            alignment=TA_CENTER,
+            textColor=TEXT_SECONDARY,
+            spaceAfter=24,
+        )
+        meta_label_style = ParagraphStyle(
+            "MetaLabel",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_SECONDARY,
+        )
+        meta_value_style = ParagraphStyle(
+            "MetaValue",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_PRIMARY,
+        )
+        score_value_style = ParagraphStyle(
+            "CoverScoreValue",
+            fontName=LOGO_FONT,
+            fontSize=44,
+            leading=48,
+            alignment=TA_CENTER,
+            textColor=TEXT_PRIMARY,
+            spaceAfter=6,
+        )
+        score_status_style = ParagraphStyle(
+            "CoverScoreStatus",
+            fontName=BODY_FONT,
+            fontSize=12,
+            leading=15,
+            alignment=TA_CENTER,
+            textColor=TEXT_SECONDARY,
+            spaceAfter=20,
+        )
+
+        story.append(Spacer(1, 50))
+
+        # Logo / brand
+        story.append(Paragraph("UIBench", logo_style))
+        story.append(Paragraph("Website Evaluation Report", subtitle_style))
+        story.append(Spacer(1, 30))
+
+        # Overall score callout
+        overall_score = float(data.get("overall_score", 0) or 0)
+        status_label, status_color = _status_badge(data.get("status", "needs_review"))
+
+        score_table_data = [
+            [Paragraph(f"{overall_score:.1f}/100", score_value_style)],
+            [Paragraph(status_label, score_status_style)],
+        ]
+        score_table = Table(score_table_data, colWidths=[page_width])
+        score_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), BG_SECONDARY),
+            ("LEFTPADDING", (0, 0), (-1, -1), 24),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 24),
+            ("TOPPADDING", (0, 0), (-1, -1), 18),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 18),
+            ("LINEBELOW", (0, 0), (-1, 0), 2, BORDER_BRIGHT),
+        ]))
+        story.append(score_table)
+        story.append(Spacer(1, 26))
+
+        # Meta info
+        url = data.get("url", "N/A")
+        timestamp = data.get("timestamp", "N/A")
+        analyzers = data.get("analyzers", [])
+        analyzer_names = [
+            a.get("name", a) if isinstance(a, dict) else str(a) for a in analyzers
+        ]
+        analyzers_used = ", ".join(analyzer_names) if analyzer_names else "N/A"
+
+        meta_data = [
+            [Paragraph("Target URL", meta_label_style), Paragraph(str(url), meta_value_style)],
+            [Paragraph("Timestamp", meta_label_style), Paragraph(str(timestamp), meta_value_style)],
+            [Paragraph("Analyzers", meta_label_style), Paragraph(analyzers_used, meta_value_style)],
+        ]
+        meta_table = Table(
+            meta_data, colWidths=[page_width * 0.28, page_width * 0.72]
+        )
+        meta_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (0, -1), BG_SECONDARY),
+            ("BACKGROUND", (1, 0), (1, -1), BG_TERTIARY),
+            ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_PRIMARY),
+            ("FONTNAME", (0, 0), (-1, -1), BODY_FONT),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(meta_table)
+
+    # ------------------------------------------------------------------
+    # Page 2 — Executive Summary
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_executive_summary(
+        story: List[Any], data: Dict[str, Any], page_width: float
+    ) -> None:
+        header_style = ParagraphStyle(
+            "ESHeader",
+            fontName=LOGO_FONT,
+            fontSize=18,
+            leading=22,
+            alignment=TA_LEFT,
+            textColor=CYAN,
+            spaceAfter=14,
+        )
+        section_style = ParagraphStyle(
+            "ESSection",
+            fontName=LOGO_FONT,
+            fontSize=13,
+            leading=16,
+            alignment=TA_LEFT,
+            textColor=TEXT_PRIMARY,
+            spaceAfter=8,
+            spaceBefore=14,
+        )
         body_style = ParagraphStyle(
-            'Body',
-            fontName=font_name,
-            fontSize=11,  # Normal text size 11
-            spaceAfter=4,
-            leading=13
+            "ESBody",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_SECONDARY,
         )
-        
-        # Add UIBench image banner
-        try:
-            current_dir = Path(__file__).parent
-            banner_path = current_dir / "uibench_banner.png"
-            
-            if banner_path.exists():
-                img = Image(str(banner_path), width=150*mm, height=50*mm)
-                img.hAlign = 'CENTER'
-                story.append(img)
-                story.append(Spacer(1, 10))
-            else:
-                print(f"⚠️ Banner image not found at: {banner_path}")
-        except Exception as e:
-            print(f"⚠️ Banner loading error: {str(e)}")
-        
-        # Add title
-        story.append(Paragraph("UIBench Core Engine", intro_title_style))
-        story.append(Spacer(1, 8))
-        
-        # Description
-        description = textwrap.dedent("""
-        UIBench is a Python-based core engine designed to automate the evaluation of 
-        web design aesthetics and accessibility. The engine provides comprehensive 
-        analysis of web pages through various analyzers and evaluators.
-        """)
-        story.append(Paragraph(description, body_style))
-        story.append(Spacer(1, 11))
-        
-        # Core Components section
-        story.append(Paragraph("Core Components", subtitle_style))
-        story.append(Spacer(1, 5))
-        
-        # Analyzers section
-        story.append(Paragraph("Analyzers", section_style))
-        analyzers = [
-            "• <b>Accessibility Analyzer</b>: Evaluates WCAG compliance and accessibility features",
-            "• <b>Code Analyzer</b>: Analyzes HTML, CSS, and JavaScript code quality",
-            "• <b>Compliance Analyzer</b>: Checks for legal and regulatory compliance",
-            "• <b>Design System Analyzer</b>: Evaluates design consistency and component usage",
-            "• <b>Infrastructure Analyzer</b>: Analyzes server configuration and performance",
-            "• <b>NLP Analyzer</b>: Performs natural language processing on content",
-            "• <b>Operational Metrics Analyzer</b>: Tracks performance and operational metrics",
-            "• <b>Performance Analyzer</b>: Measures page load and runtime performance",
-            "• <b>Security Analyzer</b>: Checks for security vulnerabilities",
-            "• <b>SEO Analyzer</b>: Evaluates search engine optimization",
-            "• <b>UX Analyzer</b>: Analyzes user experience and interaction patterns"
+        bullet_style = ParagraphStyle(
+            "ESBullet",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_PRIMARY,
+            leftIndent=12,
+            spaceAfter=4,
+        )
+
+        story.append(Paragraph("Executive Summary", header_style))
+
+        # Overall score card
+        overall_score = float(data.get("overall_score", 0) or 0)
+        status_label, status_color = _status_badge(data.get("status", "needs_review"))
+
+        score_rows = [
+            [Paragraph(f"<b>Overall Score:</b> {overall_score:.1f}/100", body_style)],
+            [Paragraph(f"<b>Status:</b> {status_label}", body_style)],
+        ]
+        score_table = Table(score_rows, colWidths=[page_width])
+        score_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), BG_SECONDARY),
+            ("LEFTPADDING", (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ("LINEBELOW", (0, 0), (-1, 0), 2, BORDER_BRIGHT),
+        ]))
+        story.append(score_table)
+        story.append(Spacer(1, 14))
+
+        # Analyzer breakdown
+        story.append(Paragraph("Analyzer Breakdown", section_style))
+
+        analyzers: List[Dict[str, Any]] = data.get("analyzers", [])
+        if not analyzers:
+            story.append(Paragraph("No analyzer results available.", body_style))
+            return
+
+        table_data: List[List[Any]] = [
+            [
+                Paragraph("<b>Analyzer</b>", body_style),
+                Paragraph("<b>Score</b>", body_style),
+                Paragraph("<b>Status</b>", body_style),
+                Paragraph("<b>Issues</b>", body_style),
+            ]
         ]
         for item in analyzers:
-            story.append(Paragraph(item, body_style))
-        
-        story.append(Spacer(1, 7))
-        
-        # Evaluators section
-        story.append(Paragraph("Evaluators", section_style))
-        evaluators = [
-            "• <b>PageEvaluator</b>: Evaluates individual web pages",
-            "• <b>WebsiteEvaluator</b>: Evaluates entire websites",
-            "• <b>ProjectEvaluator</b>: Evaluates local project files"
-        ]
-        for item in evaluators:
-            story.append(Paragraph(item, body_style))
-        
-        story.append(Spacer(1, 12))
-        
-        # Analysis Types section
-        story.append(Paragraph("Analysis Options", subtitle_style))
-        story.append(Spacer(1, 5))
-        
-        analysis_types = [
-            "1. <b>Website Evaluation</b> (live website analysis)",
-            "2. <b>Offline Project Evaluation</b> (local files)",
-            "3. <b>Figma Design Evaluation</b> (design system analysis)"
-        ]
-        
-        for item in analysis_types:
-            story.append(Paragraph(item, body_style))
-            
-        story.append(Spacer(1, 11))
-        
-        # Salutation
-        salutation = textwrap.dedent("""
-        <i>Thank you for using UIBench! We're committed to helping you create better,
-        more accessible, and more efficient user interfaces.</i>
-        
-        - The UIBench Team
-        """)
-        story.append(Paragraph(salutation, ParagraphStyle(
-            'Salutation',
-            parent=body_style,
-            alignment=TA_CENTER,
-            textColor=colors.darkblue
-        )))
-    
-    @staticmethod
-    def _add_title(story, styles, font_name):
-        """Add title to PDF with custom font and size"""
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            fontName=font_name,
-            fontSize=16,
-            spaceAfter=15,
-            alignment=TA_CENTER,
-            textColor=colors.darkblue
-        )
-        story.append(Paragraph("UI Evaluation Report", title_style))
-        story.append(Spacer(1, 10))
-    
-    @staticmethod
-    def _add_metadata(story, results, styles, font_name):
-        """Add metadata section to PDF with enhanced formatting"""
-        if "metadata" not in results:
-            return
-        
-        metadata = results["metadata"]
-    
-        # Create custom styles with font
-        header_style = ParagraphStyle(
-            'MetadataHeader',
-            fontName=font_name,
-            fontSize=14,
-            spaceAfter=10,
-            textColor=colors.darkblue
-        )
-    
-        body_style = ParagraphStyle(
-            'MetadataBody',
-            fontName=font_name,
-            fontSize=11,
-            leading=13
-        )
-    
-        # Add section header with icon
-        story.append(Paragraph("📋 Evaluation Details", header_style))
-        story.append(Spacer(1, 8))
-    
-        # Create metadata table
-        metadata_data = [
-            ["🕒 Timestamp", metadata.get('timestamp', 'N/A')],
-            ["🎛️ Mode", metadata.get('evaluation_mode', 'N/A').capitalize()],
-            ["🎯 Target", str(metadata.get('target', 'N/A'))],
-            ["🧩 Analyzers", ', '.join(metadata.get('analyzers_used', []))]
-        ]
-    
-        metadata_table = Table(metadata_data, colWidths=[1.5*inch, 4.5*inch])
-        metadata_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 11),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.darkgrey),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8)
+            name = item.get("name", "Unknown") if isinstance(item, dict) else str(item)
+            score = float(item.get("score", 0) or 0) if isinstance(item, dict) else 0.0
+            status = item.get("status", "needs_review") if isinstance(item, dict) else "needs_review"
+            issues_count = len(item.get("issues", [])) if isinstance(item, dict) else 0
+            label, _ = _status_badge(status)
+
+            table_data.append([
+                Paragraph(str(name), body_style),
+                Paragraph(f"{score:.1f}/100", body_style),
+                Paragraph(label, body_style),
+                Paragraph(str(issues_count), body_style),
+            ])
+
+        col_widths = [page_width * 0.40, page_width * 0.18, page_width * 0.22, page_width * 0.20]
+        analyzer_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        analyzer_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BG_SECONDARY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), CYAN),
+            ("FONTNAME", (0, 0), (-1, 0), LOGO_FONT),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("TOPPADDING", (0, 0), (-1, 0), 8),
+            ("BACKGROUND", (0, 1), (-1, -1), BG_TERTIARY),
+            ("TEXTCOLOR", (0, 1), (-1, -1), TEXT_PRIMARY),
+            ("FONTNAME", (0, 1), (-1, -1), BODY_FONT),
+            ("FONTSIZE", (0, 1), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 8),
+            ("TOPPADDING", (0, 1), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [BG_TERTIARY, BG_SECONDARY]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]))
-        story.append(metadata_table)
-        story.append(Spacer(1, 15))
+        story.append(analyzer_table)
+        story.append(Spacer(1, 16))
+
+        # Top issues
+        story.append(Paragraph("Top Issues", section_style))
+        all_issues: List[str] = []
+        for item in analyzers:
+            if isinstance(item, dict):
+                for issue in item.get("issues", [])[:3]:
+                    all_issues.append(f"• {issue}")
+        if all_issues:
+            for issue_text in all_issues[:10]:
+                story.append(Paragraph(issue_text, bullet_style))
+        else:
+            story.append(Paragraph("No issues detected.", body_style))
+
+        story.append(Spacer(1, 12))
+
+        # Top recommendations
+        story.append(Paragraph("Top Recommendations", section_style))
+        all_recs: List[str] = []
+        for item in analyzers:
+            if isinstance(item, dict):
+                for rec in item.get("recommendations", [])[:3]:
+                    all_recs.append(f"• {rec}")
+        if all_recs:
+            for rec_text in all_recs[:10]:
+                story.append(Paragraph(rec_text, bullet_style))
+        else:
+            story.append(Paragraph("No recommendations at this time.", body_style))
+
+    # ------------------------------------------------------------------
+    # Page 3+ — Detailed Analysis
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def _add_summary(story, results, styles, font_name):
-        """Add summary section to PDF with enhanced formatting and emojis"""
-        if "summary" not in results:
-            return
-        
-        summary = results["summary"]
-    
-        # Create custom styles with font
+    def _add_detailed_analysis(
+        story: List[Any], data: Dict[str, Any], page_width: float
+    ) -> None:
         header_style = ParagraphStyle(
-            'SummaryHeader',
-            fontName=font_name,
-            fontSize=14,
-            spaceAfter=10,
-            textColor=colors.darkblue
+            "DAHeader",
+            fontName=LOGO_FONT,
+            fontSize=18,
+            leading=22,
+            alignment=TA_LEFT,
+            textColor=CYAN,
+            spaceAfter=14,
         )
-    
+        section_header_style = ParagraphStyle(
+            "DASectionHeader",
+            fontName=LOGO_FONT,
+            fontSize=13,
+            leading=16,
+            alignment=TA_LEFT,
+            textColor=TEXT_PRIMARY,
+            spaceAfter=8,
+            spaceBefore=12,
+        )
         body_style = ParagraphStyle(
-            'SummaryBody',
-            fontName=font_name,
-            fontSize=11,
-            leading=13
-        )   
-    
-        # Determine status icon and color
-        score = summary.get('overall_score', 0)
-        if score >= 80:
-            status_icon = "🟢"
-            status_color = colors.green
-        elif score >= 60:
-            status_icon = "🟡"
-            status_color = colors.orange
-        else:
-            status_icon = "🔴"
-            status_color = colors.red
-    
-        # Add section header with icon
-        story.append(Paragraph("📊 Overall Assessment", header_style))
-        story.append(Spacer(1, 8))
-    
-        # Create summary table
-        summary_data = [
-            [f"{status_icon} Score", f"<b>{score}/100</b>"],
-            ["📊 Page Class", summary.get('page_class', 'N/A')],
-            ["⚠️ Issues Found", str(summary.get('total_issues', 0))],
-            ["💡 Recommendations", str(summary.get('total_recommendations', 0))]
-        ]
-    
-        summary_table = Table(summary_data, colWidths=[1.5*inch, 4.5*inch])
-        summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 11),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.darkgrey),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-            ('TEXTCOLOR', (1, 0), (1, 0), status_color),
-            ('FONTWEIGHT', (1, 0), (1, 0), 'Bold')
-        ]))
-        story.append(summary_table)
-        story.append(Spacer(1, 15))
-    
-    @staticmethod
-    def _add_analyzers(story, results, styles, font_name):
-        """Add analyzer results to PDF with custom font and full details"""
-        if "analyzers" not in results:
+            "DABody",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_SECONDARY,
+        )
+        bullet_style = ParagraphStyle(
+            "DABullet",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_PRIMARY,
+            leftIndent=12,
+            spaceAfter=4,
+        )
+        metric_label_style = ParagraphStyle(
+            "DAMetricLabel",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_SECONDARY,
+        )
+        metric_value_style = ParagraphStyle(
+            "DAMetricValue",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_PRIMARY,
+        )
+
+        story.append(Paragraph("Detailed Analysis", header_style))
+        story.append(Spacer(1, 6))
+
+        analyzers: List[Dict[str, Any]] = data.get("analyzers", [])
+        if not analyzers:
+            story.append(Paragraph("No detailed analysis available.", body_style))
             return
-            
-        section_style = ParagraphStyle(
-            'Section',
-            fontName=font_name,
-            fontSize=12,
-            spaceAfter=6,
-            spaceBefore=10,
-            textColor=colors.darkblue
-        )
-        
-        body_style = ParagraphStyle(
-            'Body',
-            fontName=font_name,
-            fontSize=11,
-            spaceAfter=5,
-            leading=13
-        )
-        
-        story.append(Paragraph("Detailed Analysis", section_style))
-        story.append(Spacer(1, 8))
-        
-        for analyzer_key, analyzer_data in results["analyzers"].items():
-            analyzer_name = analyzer_data.get("name", analyzer_key.title())
-            score = analyzer_data.get("score", 0)
-            status = analyzer_data.get("status", "Unknown")
-            
-            # Determine status color
-            if score >= 80:
-                status_color = colors.green
-                status_icon = "🟢"
-            elif score >= 60:
-                status_color = colors.orange
-                status_icon = "🟡"
-            else:
-                status_color = colors.red
-                status_icon = "🔴"
-            
-            # Analyzer header
-            story.append(Paragraph(
-                f"{status_icon} <b>{analyzer_name}</b>", 
-                ParagraphStyle(
-                    'AnalyzerHeader', 
-                    fontName=font_name, 
-                    fontSize=12, 
-                    textColor=status_color
-                )
-            ))
-            story.append(Spacer(1, 5))
-            
-            # Score and status
-            story.append(Paragraph(
-                f"<b>Score:</b> {score}/100 | <b>Status:</b> {status}", 
-                body_style
-            ))
-            story.append(Spacer(1, 8))
-            
-            # Issues - show ALL issues
-            issues = analyzer_data.get("issues", [])
-            if issues:
-                story.append(Paragraph("⚠️ <b>Issues Found:</b>", body_style))
-                for issue in issues:
-                    story.append(Paragraph(f"• {issue}", body_style))
-                story.append(Spacer(1, 8))
-            
-            # Recommendations - show ALL recommendations
-            recommendations = analyzer_data.get("recommendations", [])
-            if recommendations:
-                story.append(Paragraph("💡 <b>Recommendations:</b>", body_style))
-                for rec in recommendations:
-                    story.append(Paragraph(f"• {rec}", body_style))
-                story.append(Spacer(1, 8))
-            
-            # Key Metrics
-            metrics = analyzer_data.get("metrics", {})
-            if metrics:
-                story.append(Paragraph("📏 <b>Key Metrics:</b>", body_style))
-                for metric_name, metric_value in metrics.items():
-                    story.append(Paragraph(f"• {metric_name}: {metric_value}", body_style))
-                story.append(Spacer(1, 10))
-    
-    @staticmethod
-    def _add_figma_data(story, results, styles, font_name):
-        """Add Figma data to PDF if available with custom font and full details"""
-        # Check if figma data exists
-        figma_data = results.get("figma_data")
-        if not figma_data:
-            return
-            
-        # Create custom styles
-        header_style = ParagraphStyle(
-            'FigmaHeader',
-            fontName=font_name,
-            fontSize=12,
-            spaceAfter=10,
-            textColor=colors.darkblue
-        )
-        
-        body_style = ParagraphStyle(
-            'FigmaBody',
-            fontName=font_name,
-            fontSize=11,
-            leading=13
-        )
-        
-        story.append(Paragraph("Figma Integration Data", header_style))
-        story.append(Spacer(1, 8))
-        
-        if "file_info" in figma_data:
-            file_info = figma_data["file_info"]
-            figma_info_data = [
-                ["File Name", file_info.get('name', 'N/A')],
-                ["Owner", file_info.get('owner', 'N/A')],
-                ["Last Modified", file_info.get('last_modified', 'N/A')]
+
+        for item in analyzers:
+            if not isinstance(item, dict):
+                continue
+
+            name = item.get("name", "Unknown")
+            score = float(item.get("score", 0) or 0)
+            status = item.get("status", "needs_review")
+            issues: List[str] = item.get("issues", []) or []
+            recommendations: List[str] = item.get("recommendations", []) or []
+            metrics: Dict[str, Any] = item.get("metrics", {}) or {}
+            error = item.get("error")
+
+            status_label, status_color = _status_badge(status)
+
+            section: List[Any] = []
+
+            # Section header with score pill
+            score_pill_style = ParagraphStyle(
+                "ScorePill",
+                fontName=LOGO_FONT,
+                fontSize=10,
+                leading=12,
+                alignment=TA_CENTER,
+                textColor=colors.white,
+            )
+            header_data = [
+                [
+                    Paragraph(f"<b>{name}</b>", section_header_style),
+                    Paragraph(
+                        f'<font color="white">{score:.1f}/100</font>',
+                        score_pill_style,
+                    ),
+                ]
             ]
-            
-            figma_table = Table(figma_info_data, colWidths=[2*inch, 4*inch])
-            figma_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, -1), font_name),
-                ('FONTSIZE', (0, 0), (-1, -1), 11),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.darkgrey)
+            header_table = Table(header_data, colWidths=[page_width * 0.78, page_width * 0.22])
+            header_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (0, 0), BG_SECONDARY),
+                ("BACKGROUND", (1, 0), (1, 0), status_color),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LINEBELOW", (0, 0), (-1, 0), 1, BORDER),
             ]))
-            story.append(figma_table)
-            story.append(Spacer(1, 8))
-        
-        if "components" in figma_data:
-            components = figma_data["components"]
-            story.append(Paragraph(f"Components Found: {len(components)}", header_style))
-            story.append(Spacer(1, 5))
-            
-            for comp in components:
-                story.append(Paragraph(f"• {comp.get('name', 'N/A')}", body_style))
-            story.append(Spacer(1, 10))
+            section.append(header_table)
+            section.append(Spacer(1, 6))
+
+            # Status + error
+            info_rows = [
+                [Paragraph("<b>Status:</b>", metric_label_style), Paragraph(status_label, metric_value_style)],
+            ]
+            if error:
+                info_rows.append([
+                    Paragraph("<b>Error:</b>", metric_label_style),
+                    Paragraph(str(error), metric_value_style),
+                ])
+            info_table = Table(info_rows, colWidths=[page_width * 0.22, page_width * 0.78])
+            info_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), BG_TERTIARY),
+                ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_PRIMARY),
+                ("FONTNAME", (0, 0), (-1, -1), BODY_FONT),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            section.append(info_table)
+            section.append(Spacer(1, 8))
+
+            # Issues
+            if issues:
+                section.append(Paragraph("<b>Issues</b>", body_style))
+                for issue in issues:
+                    section.append(Paragraph(f"• {issue}", bullet_style))
+                section.append(Spacer(1, 6))
+
+            # Recommendations
+            if recommendations:
+                section.append(Paragraph("<b>Recommendations</b>", body_style))
+                for rec in recommendations:
+                    section.append(Paragraph(f"• {rec}", bullet_style))
+                section.append(Spacer(1, 6))
+
+            # Metrics
+            if metrics:
+                section.append(Paragraph("<b>Metrics</b>", body_style))
+                metric_rows = []
+                for k, v in metrics.items():
+                    metric_rows.append([
+                        Paragraph(str(k), metric_label_style),
+                        Paragraph(str(v), metric_value_style),
+                    ])
+                m_table = Table(metric_rows, colWidths=[page_width * 0.45, page_width * 0.55])
+                m_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), BG_TERTIARY),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_PRIMARY),
+                    ("FONTNAME", (0, 0), (-1, -1), BODY_FONT),
+                    ("FONTSIZE", (0, 0), (-1, -1), 10),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("ROWBACKGROUNDS", (0, 0), (-1, -1), [BG_TERTIARY, BG_SECONDARY]),
+                ]))
+                section.append(m_table)
+                section.append(Spacer(1, 8))
+
+            story.append(KeepTogether(section))
+            story.append(Spacer(1, 4))
+
+    # ------------------------------------------------------------------
+    # Final page — Appendix
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _add_appendix(
+        story: List[Any], data: Dict[str, Any], page_width: float
+    ) -> None:
+        header_style = ParagraphStyle(
+            "AppHeader",
+            fontName=LOGO_FONT,
+            fontSize=18,
+            leading=22,
+            alignment=TA_LEFT,
+            textColor=CYAN,
+            spaceAfter=14,
+        )
+        section_style = ParagraphStyle(
+            "AppSection",
+            fontName=LOGO_FONT,
+            fontSize=13,
+            leading=16,
+            alignment=TA_LEFT,
+            textColor=TEXT_PRIMARY,
+            spaceAfter=8,
+            spaceBefore=14,
+        )
+        body_style = ParagraphStyle(
+            "AppBody",
+            fontName=BODY_FONT,
+            fontSize=10,
+            leading=13,
+            alignment=TA_LEFT,
+            textColor=TEXT_SECONDARY,
+        )
+
+        story.append(Paragraph("Appendix", header_style))
+
+        # Methodology
+        story.append(Paragraph("Methodology", section_style))
+        methodology = (
+            "Scores are calculated as the normalized weighted result of each enabled analyzer. "
+            "Each analyzer returns a score from 0 to 100, a status label, issues, and recommendations. "
+            "The overall score is the arithmetic mean of all analyzer scores. "
+            "Status thresholds: passed >= 75, warning >= 50, failed < 50."
+        )
+        story.append(Paragraph(methodology, body_style))
+        story.append(Spacer(1, 10))
+
+        # Analyzers used
+        analyzers: List[Dict[str, Any]] = data.get("analyzers", [])
+        story.append(Paragraph("Analyzers Executed", section_style))
+        if analyzers:
+            table_data = [
+                [
+                    Paragraph("<b>Analyzer</b>", body_style),
+                    Paragraph("<b>Score</b>", body_style),
+                    Paragraph("<b>Status</b>", body_style),
+                    Paragraph("<b>Duration</b>", body_style),
+                ]
+            ]
+            for item in analyzers:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name", "Unknown")
+                score = float(item.get("score", 0) or 0)
+                status = item.get("status", "needs_review")
+                exec_time = item.get("execution_time_ms")
+                time_str = f"{exec_time:.1f} ms" if exec_time is not None else "N/A"
+                label, _ = _status_badge(status)
+                table_data.append([
+                    Paragraph(str(name), body_style),
+                    Paragraph(f"{score:.1f}/100", body_style),
+                    Paragraph(label, body_style),
+                    Paragraph(time_str, body_style),
+                ])
+
+            col_widths = [page_width * 0.38, page_width * 0.20, page_width * 0.22, page_width * 0.20]
+            table = Table(table_data, colWidths=col_widths, repeatRows=1)
+            table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), BG_SECONDARY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), CYAN),
+                ("FONTNAME", (0, 0), (-1, 0), LOGO_FONT),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("TOPPADDING", (0, 0), (-1, 0), 8),
+                ("BACKGROUND", (0, 1), (-1, -1), BG_TERTIARY),
+                ("TEXTCOLOR", (0, 1), (-1, -1), TEXT_PRIMARY),
+                ("FONTNAME", (0, 1), (-1, -1), BODY_FONT),
+                ("FONTSIZE", (0, 1), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 8),
+                ("TOPPADDING", (0, 1), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [BG_TERTIARY, BG_SECONDARY]),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            story.append(table)
+        else:
+            story.append(Paragraph("No analyzers were executed.", body_style))
+
+        story.append(Spacer(1, 12))
+
+        # Technical details
+        story.append(Paragraph("Technical Details", section_style))
+        meta = data.get("metadata", {}) or {}
+        schema_version = data.get("schema_version", "1.0")
+        tech_rows = [
+            ["Schema Version", str(schema_version)],
+            ["Evaluation ID", str(meta.get("evaluation_id", "N/A"))],
+            ["Mode", str(meta.get("evaluation_mode", meta.get("mode", "N/A")))],
+            ["Target", str(meta.get("target", meta.get("url", "N/A")))],
+            ["Framework", str(meta.get("framework", meta.get("frameworks", "N/A")))],
+        ]
+        tech_data = [
+            [Paragraph("<b>Key</b>", body_style), Paragraph("<b>Value</b>", body_style)]
+        ]
+        for key, value in tech_rows:
+            tech_data.append([
+                Paragraph(str(key), body_style),
+                Paragraph(str(value), body_style),
+            ])
+        tech_table = Table(tech_data, colWidths=[page_width * 0.35, page_width * 0.65])
+        tech_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BG_SECONDARY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), CYAN),
+            ("FONTNAME", (0, 0), (-1, 0), LOGO_FONT),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("TOPPADDING", (0, 0), (-1, 0), 8),
+            ("BACKGROUND", (0, 1), (-1, -1), BG_TERTIARY),
+            ("TEXTCOLOR", (0, 1), (-1, -1), TEXT_PRIMARY),
+            ("FONTNAME", (0, 1), (-1, -1), BODY_FONT),
+            ("FONTSIZE", (0, 1), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 8),
+            ("TOPPADDING", (0, 1), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [BG_TERTIARY, BG_SECONDARY]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(tech_table)

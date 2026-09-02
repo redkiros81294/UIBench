@@ -1,0 +1,43 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - uibench
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URL=mongodb://mongo:27017
+      - DB_NAME=uibench
+      - SECRET_KEY=change-me-in-production
+      - CORS_ORIGINS=http://localhost:8080,http://frontend:80
+    depends_on:
+      - mongo
+    networks:
+      - uibench
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - uibench
+
+volumes:
+  mongo_data:
+
+networks:
+  uibench:
+    driver: bridge

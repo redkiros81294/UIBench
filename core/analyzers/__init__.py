@@ -1,35 +1,63 @@
 """
-UIBench Analyzers Package
-"""
+Core analyzers package.
 
-from .accessibility_analyzer import AccessibilityAnalyzer
-from .performance_analyzer import PerformanceAnalyzer
-from .seo_analyzer import SEOAnalyzer
-from .security_analyzer import SecurityAnalyzer
-from .ux_analyzer import UXAnalyzer
-from .code_analyzer import CodeAnalyzer
-from .design_system_analyzer import DesignSystemAnalyzer
-from .nlp_content_analyzer import NLPContentAnalyzer
-from .infrastructure_analyzer import InfrastructureAnalyzer
-from .operational_metrics_analyzer import OperationalMetricsAnalyzer
-from .compliance_analyzer import ComplianceAnalyzer
-from .mutation_analyzer import MutationAnalyzer
-from .contract_analyzer import ContractAnalyzer
-from .fuzz_analyzer import FuzzAnalyzer
+Analyzers are organized by category for maintainability.
+The registry auto-discovers analyzers from subpackages.
+"""
+from .base import Analyzer, BrowserAnalyzer, Persistable
+from .registry import AnalyzerRegistry
 
 __all__ = [
-    'AccessibilityAnalyzer',
-    'PerformanceAnalyzer',
-    'SEOAnalyzer',
-    'SecurityAnalyzer',
-    'UXAnalyzer',
-    'CodeAnalyzer',
-    'DesignSystemAnalyzer',
-    'NLPContentAnalyzer',
-    'InfrastructureAnalyzer',
-    'OperationalMetricsAnalyzer',
-    'ComplianceAnalyzer',
-    'MutationAnalyzer',
-    'ContractAnalyzer',
-    'FuzzAnalyzer'
+    "Analyzer",
+    "BrowserAnalyzer",
+    "Persistable",
+    "AnalyzerRegistry",
 ]
+
+
+def build_default_registry() -> AnalyzerRegistry:
+    """Build and return the default analyzer registry.
+
+    This imports analyzers lazily to avoid heavy dependency loading
+    at startup time.
+    """
+    registry = AnalyzerRegistry()
+
+    # Static analyzers (pure Python, no browser required)
+    from .seo.meta_tags import MetaTagsAnalyzer
+    from .seo.headings import HeadingsAnalyzer
+    from .seo.images import ImageSEOAnalyzer
+    from .accessibility.alt_text import AltTextAnalyzer
+    from .accessibility.headings import AccessibilityHeadingsAnalyzer
+    from .performance.page_size import PageSizeAnalyzer
+    from .design_system.css_variables import CSSVariablesAnalyzer
+    from .nlp.readability import ReadabilityAnalyzer
+    from .nlp.sentiment import SentimentAnalyzer
+
+    for analyzer_cls in [
+        MetaTagsAnalyzer,
+        HeadingsAnalyzer,
+        ImageSEOAnalyzer,
+        AltTextAnalyzer,
+        AccessibilityHeadingsAnalyzer,
+        PageSizeAnalyzer,
+        CSSVariablesAnalyzer,
+        ReadabilityAnalyzer,
+        SentimentAnalyzer,
+    ]:
+        registry.register(analyzer_cls())
+
+    # Browser analyzers (opt-in via --browser or config)
+    try:
+        from .browser.axe_accessibility import AxeAccessibilityAnalyzer
+        from .browser.performance import BrowserPerformanceAnalyzer
+
+        for analyzer_cls in [
+            AxeAccessibilityAnalyzer,
+            BrowserPerformanceAnalyzer,
+        ]:
+            registry.register(analyzer_cls())
+    except ImportError:
+        pass
+
+    return registry

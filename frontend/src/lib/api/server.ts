@@ -1,7 +1,7 @@
 import type { Project, User } from '$lib/types';
 import axios from 'axios';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 export async function registerUser(user: User) {
 	try {
@@ -27,7 +27,6 @@ export async function loginUser(user: User) {
 
 export async function getUserDetails(token: string) {
 	try {
-		// Headers.set('Authorization', `Bearer ${token}`);
 		const res = await axios.get(`${API_BASE}/users/me/`, {
 			headers: {
 				Authorization: `Bearer ${token}`
@@ -61,11 +60,10 @@ export async function getUserProjectAnalysisById(token: string, projectId: strin
 		const res = await axios.get(`${API_BASE}/users/me/projects/${projectId}/analysis`, {
 			headers: {
 				Authorization: `Bearer ${token}`
-			},
-			method: 'GET'
+			}
 		});
 		console.log('Project response:', res.data);
-		return res.data[0]; // Assuming the response is an array and we want the first item
+		return res.data[0];
 	} catch (error) {
 		console.error('Error fetching project:', error);
 		throw error;
@@ -74,7 +72,6 @@ export async function getUserProjectAnalysisById(token: string, projectId: strin
 
 export async function getUserProjects(token: string) {
 	try {
-		// Headers.set('Authorization', `Bearer ${token}`);
 		const res = await axios.get(`${API_BASE}/users/me/projects/`, {
 			headers: {
 				Authorization: `Bearer ${token}`
@@ -90,7 +87,6 @@ export async function getUserProjects(token: string) {
 
 export async function createProject(project: Project, token: string) {
 	try {
-		// Headers.set('Authorization', `Bearer ${token}`);
 		const res = await axios.post(`${API_BASE}/users/me/projects/`, project, {
 			headers: {
 				Authorization: `Bearer ${token}`
@@ -100,14 +96,13 @@ export async function createProject(project: Project, token: string) {
 		const analysis = await startAnalysis(res.data.project_id, token);
 		return res.data + analysis;
 	} catch (error) {
-		console.error('Error occurred during getUserProjects:', error);
+		console.error('Error occurred during createProject:', error);
 		throw error;
 	}
 }
 
-async function startAnalysis(id: string, token: string) {
+export async function startAnalysis(id: string, token: string) {
 	try {
-		// Headers.set('Authorization', `Bearer ${token}`);
 		const res = await axios.post(
 			`${API_BASE}/users/me/projects/${id}/analysis/`,
 			{},

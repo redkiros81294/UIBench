@@ -22,7 +22,7 @@
 						user_id: userDetails.user_id,
 						name: userDetails.name,
 						email: userDetails.email,
-						bearer: localStorage.getItem('accessToken') ?? '',
+						bearer: savedToken,
 						role: userDetails.role,
 						projects: userDetails.projects
 					});
