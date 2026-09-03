@@ -10,6 +10,15 @@ STATUS_ICONS = {
 REPORT_ICON = ("\U0001F4CA", "[REPORT]", "info")   # bar chart
 START_ICON = ("\U0001F680", "[START]", "accent")   # rocket
 
+ANALYZER_ICONS = {
+    "seo": ("\U0001F50D", "[SEO]", "accent"),
+    "performance": ("\u26a1", "[PERF]", "warn"),
+    "accessibility": ("\u267F", "[A11Y]", "pass"),
+    "design": ("\U0001F3A8", "[DSGN]", "info"),
+    "security": ("\U0001F512", "[SEC]", "fail"),
+    "nlp": ("\U0001F4DD", "[NLP]", "dim"),
+}
+
 
 @dataclass
 class RenderOptions:

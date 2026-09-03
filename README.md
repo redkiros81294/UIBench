@@ -60,11 +60,17 @@ docker compose run --rm cli batch urls.txt
 ### CLI Commands
 
 ```bash
-# Evaluate a live URL
+# Evaluate a live URL (cards on TTY, JSON when piped)
 uibench evaluate https://example.com
 
 # Evaluate with specific analyzers
 uibench evaluate https://example.com --analyzer seo,performance
+
+# Run all analyzers without interactive picker
+uibench evaluate https://example.com --all
+
+# Accept default analyzer selection without prompting
+uibench evaluate https://example.com -y
 
 # Batch evaluation from file
 uibench batch urls.txt
@@ -80,8 +86,9 @@ uibench config show
 
 The CLI supports multiple output formats via `--output`:
 
-- `json` — machine-readable (default)
+- `json` — machine-readable (default when piped)
 - `text` — human-readable terminal output
+- `cards` — colorful per-analyzer cards (default on TTY)
 - `html` — standalone HTML report
 - `pdf` — branded PDF report (requires `reportlab`)
 
@@ -89,6 +96,16 @@ Example:
 ```bash
 uibench evaluate https://example.com --output pdf --save report.pdf
 ```
+
+### Interactive Analyzer Picker
+
+When running `uibench evaluate` interactively without `--analyzer` or `--skip`, an interactive picker appears (requires `questionary`):
+
+```bash
+uibench evaluate https://example.com
+```
+
+Select analyzers with space, confirm with enter. The picker only fires in interactive terminals — it never appears in CI, scripts, or batch mode.
 
 ## Project Structure
 

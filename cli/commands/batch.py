@@ -39,7 +39,12 @@ def batch_command(
     """Evaluate multiple URLs from a file (one per line)."""
     app_ctx: AppContext = ctx.obj
     try:
-        output_format = validate_format(output or app_ctx.output_format)
+        if output is None:
+            if app_ctx.console.is_terminal:
+                output = app_ctx.config.get("output", {}).get("tty_format", "cards")
+            else:
+                output = app_ctx.config.get("output", {}).get("default_format", "json")
+        output_format = validate_format(output)
         targets = _read_targets(file)
     except UIBenchError as err:
         from cli.ui.errors import print_error

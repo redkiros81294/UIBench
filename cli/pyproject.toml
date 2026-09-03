@@ -19,6 +19,8 @@ dependencies = [
 pdf = ["reportlab>=4.0"]
 # uibench watch, uses real filesystem events instead of the polling fallback
 watch = ["watchdog>=4.0"]
+# interactive analyzer picker
+interactive = ["questionary>=2.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

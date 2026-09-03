@@ -11,6 +11,8 @@ from cli.commands.evaluate import build_options, render_result, run_evaluation
 from cli.context import AppContext
 from cli.core.exceptions import InvalidArgumentsError, UIBenchError
 from cli.output import validate_format
+from cli.ui.icons import RenderOptions
+from cli.ui.picker import pick_analyzers
 
 
 def _snapshot(path: Path) -> dict[str, float]:
@@ -48,11 +50,25 @@ def watch_command(
     analyzer: Optional[str] = typer.Option(None, "--analyzer"),
     output: Optional[str] = typer.Option(None, "--output"),
     save: Optional[Path] = typer.Option(None, "--save"),
+    all_flag: bool = typer.Option(False, "--all", help="Run all analyzers without prompting."),
+    yes_flag: bool = typer.Option(False, "-y", "--yes", help="Accept default analyzer selection without prompting."),
 ) -> None:
     """Watch a local project directory and re-evaluate on file changes."""
     app_ctx: AppContext = ctx.obj
+
+    if analyzer is None and not yes_flag:
+        picked = pick_analyzers(app_ctx.console)
+        if picked:
+            analyzer = ",".join(picked)
+
+    if output is None:
+        if app_ctx.console.is_terminal:
+            output = app_ctx.config.get("output", {}).get("tty_format", "cards")
+        else:
+            output = app_ctx.config.get("output", {}).get("default_format", "json")
+
     try:
-        output_format = validate_format(output) if output else "text"
+        output_format = validate_format(output)
         if not path.exists():
             raise InvalidArgumentsError(f"Path not found: {path}")
     except UIBenchError as err:

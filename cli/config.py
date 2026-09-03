@@ -47,6 +47,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "output": {
         "default_format": "json",
+        "tty_format": "cards",
         "color": True,
         "show_spinner": True,
     },

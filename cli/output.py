@@ -5,13 +5,15 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
+from rich.padding import Padding
 
 from cli.core.exceptions import CoreEngineError, InvalidArgumentsError
 from cli.models import EvaluationResult
+from cli.ui.cards import build_analyzer_cards
 from cli.ui.icons import RenderOptions, status_glyph
 from cli.ui.table import build_analyzer_table
 
-VALID_FORMATS = ("json", "text", "html", "pdf")
+VALID_FORMATS = ("json", "text", "html", "pdf", "cards")
 
 
 def validate_format(fmt: str) -> str:
@@ -67,6 +69,24 @@ def render_text(result: EvaluationResult, console: Console, opts: RenderOptions)
         console.print("[dim]Recommendations[/dim]")
         for analyzer_name, msg in result.all_recommendations:
             console.print(f"[info]\u2192[/info] [{analyzer_name}] {msg}")
+
+
+def render_cards(result: EvaluationResult, console: Console, opts: RenderOptions) -> None:
+    glyph, style = status_glyph(result.status, opts)
+    summary = (
+        f"[accent]UIBench[/accent] \u00b7 [accent]{result.target}[/accent] \u00b7 "
+        f"[{style}]{result.overall_score:.0f}/100[/{style}] [{style}]{glyph} {result.status}[/{style}] "
+        f"\u00b7 {len(result.analyzers)} analyzers"
+    )
+    console.print(summary)
+    console.print()
+
+    cards = build_analyzer_cards(result.analyzers, console.width or 80, opts)
+    if isinstance(cards, list):
+        for panel in cards:
+            console.print(panel)
+    else:
+        console.print(Padding(cards, (0, 0)))
 
 
 # ---------------------------------------------------------------- html ----
