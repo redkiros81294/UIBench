@@ -8,16 +8,18 @@ from rich.panel import Panel
 from cli.models import AnalyzerResult
 from cli.ui.icons import ANALYZER_ICONS, RenderOptions, status_glyph
 
+_STATUS_COLORS = {
+    "passed": "#3FB950",
+    "warning": "#D29922",
+    "failed": "#F85149",
+}
+
 
 def _status_style(status: str) -> str:
     status = (status or "").lower()
-    if status == "passed":
-        return "pass"
-    if status == "warning":
-        return "warn"
-    if status == "failed":
-        return "fail"
-    return "dim"
+    if status in _STATUS_COLORS:
+        return _STATUS_COLORS[status]
+    return "#6B7280"
 
 
 def build_analyzer_cards(

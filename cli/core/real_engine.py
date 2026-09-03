@@ -28,6 +28,11 @@ class RealEngine:
     """Real UIBench core engine adapter."""
 
     def __init__(self, playwright_timeout: int = 60000) -> None:
+        if not CORE_AVAILABLE:
+            raise CoreEngineError(
+                "UIBench core is not installed.",
+                suggestion="pip install -e .[cli]",
+            )
         self.playwright_timeout = playwright_timeout
 
     def evaluate(self, target: str, options: EvaluateOptions) -> EvaluationResult:
