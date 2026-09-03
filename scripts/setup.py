@@ -73,11 +73,11 @@ OPTIONAL_COMPONENTS = {
 DEPENDENCIES = {
     "fullstack": [
         "requirements.txt",
-        "cli/pyproject.toml[cli]",
+        "cli",
     ],
     "cli": [
         "requirements.txt",
-        "cli/pyproject.toml[cli]",
+        "cli",
     ],
     "core": [
         "requirements.txt",
@@ -156,10 +156,10 @@ def install_dependencies(mode: str) -> None:
             continue
         
         try:
-            if req_file.startswith("cli/"):
-                # Install CLI package with optional dependencies
+            if req_file == "cli":
+                # Install CLI package in editable mode with optional deps
                 subprocess.run(
-                    [str(pip), "install", "-e", f"{req_path}[cli]"],
+                    [str(pip), "install", "-e", str(ROOT / "cli")],
                     check=True,
                 )
                 print_success(f"Installed CLI package from {req_file}")
@@ -244,7 +244,8 @@ def main() -> None:
             click.echo("     source .venv/bin/activate")
         click.echo("  2. Run CLI: uibench --help")
         click.echo("  3. Evaluate a URL: uibench evaluate https://example.com")
-        click.echo("  4. Generate PDF: uibench pdf https://example.com")
+        click.echo("  4. Batch evaluate: uibench batch urls.txt")
+        click.echo("  5. Generate PDF: uibench evaluate https://example.com --output pdf --save report.pdf")
     elif mode == "core":
         click.echo("\nNext steps:")
         click.echo("  1. Activate virtual environment:")

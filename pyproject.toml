@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.backends.legacy:build"
 
 [project]
-name = "uibench-core"
+name = "uibench"
 version = "0.1.0"
-description = "UIBench core analysis engine"
+description = "Web Interface Analysis & Design System Platform"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 dependencies = [

@@ -14,7 +14,7 @@ from uibench_cli.commands.evaluate import evaluate_command
 from uibench_cli.commands.watch import watch_command
 from uibench_cli.context import AppContext
 from uibench_cli.core.exceptions import UIBenchError
-from uibench_cli.core.mock_engine import MockEngine
+from uibench_cli.core.real_engine import RealEngine
 from uibench_cli.theme import build_console
 
 app = typer.Typer(
@@ -29,6 +29,15 @@ def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"uibench {__version__}")
         raise typer.Exit()
+
+
+def _build_engine() -> object:
+    try:
+        return RealEngine()
+    except Exception as exc:
+        # Fallback to MockEngine when core is not installed
+        from uibench_cli.core.mock_engine import MockEngine
+        return MockEngine()
 
 
 @app.callback()
@@ -66,7 +75,7 @@ def main_callback(
 
     ctx.obj = AppContext(
         console=console,
-        engine=MockEngine(),  # <-- swap for the real engine; see CORE_INTEGRATION.md
+        engine=_build_engine(),
         config=cfg,
         config_path=cfg_path,
         output_format=output,
