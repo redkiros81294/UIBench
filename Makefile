@@ -1,4 +1,4 @@
-.PHONY: help dev test build backend-start frontend-start clean
+.PHONY: help dev test build backend-start frontend-start clean cli-install cli-setup
 
 help:
 	@echo "UIBench Makefile"
@@ -8,6 +8,8 @@ help:
 	@echo "  make test          - Run tests"
 	@echo "  make build         - Build Docker images"
 	@echo "  make clean         - Remove build artifacts"
+	@echo "  make cli-install   - Install CLI-only dependencies"
+	@echo "  make cli-setup     - Run interactive setup for CLI mode"
 
 dev:
 	docker compose up --build
@@ -30,3 +32,10 @@ clean:
 	find . -type d -name .pytest_cache -exec rm -rf {} +
 	find . -type d -name dist -exec rm -rf {} +
 	find . -type d -name node_modules -exec rm -rf {} +
+
+cli-install:
+	pip install -e ".[cli]"
+	playwright install chromium
+
+cli-setup:
+	python scripts/setup.py

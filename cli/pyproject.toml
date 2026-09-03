@@ -1,0 +1,31 @@
+[project]
+name = "uibench-cli"
+version = "1.0.0"
+description = "Terminal-native client for the UIBench web interface analysis platform."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "UIBench" }]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "tomli>=2.0; python_version < '3.11'",
+    "tomli-w>=1.0",
+]
+
+[project.optional-dependencies]
+# --output pdf
+pdf = ["reportlab>=4.0"]
+# uibench watch, uses real filesystem events instead of the polling fallback
+watch = ["watchdog>=4.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+uibench = "uibench_cli.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["uibench_cli*"]
