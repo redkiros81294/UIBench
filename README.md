@@ -2,6 +2,12 @@
 
 ![UIBench](logo.png)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-compose-blue.svg)](https://docs.docker.com/compose/)
+[![CLI](https://img.shields.io/badge/cli-Typer%20%2B%20Rich-green.svg)](#cli-usage)
+[![Tests](https://img.shields.io/badge/tests-pytest-green.svg)](#development)
+
 **UIBench** is a web interface analysis and design system platform that evaluates websites and digital products across aesthetics, accessibility, performance, SEO, security, and design-system consistency. It delivers actionable reports through a web dashboard, REST API, PDF exports, and a terminal-native CLI.
 
 ---
