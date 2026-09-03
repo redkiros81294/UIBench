@@ -17,6 +17,18 @@ docker compose up --build
 
 For users who only need the command-line interface:
 
+### Option A: Quick test without full install
+
+```bash
+# From repo root, using the existing venv we created:
+.venv/bin/uibench --help
+.venv/bin/uibench evaluate --help
+.venv/bin/uibench batch --help
+.venv/bin/uibench watch --help
+```
+
+### Option B: Install CLI package
+
 ```bash
 # Clone repo
 git clone <repository-url>
@@ -30,6 +42,19 @@ playwright install chromium
 
 # Run CLI
 uibench --help
+```
+
+### Option C: Run CLI in Docker
+
+```bash
+# Build and run CLI container
+docker compose run --rm cli --help
+
+# Evaluate a URL
+docker compose run --rm cli evaluate https://example.com
+
+# Batch evaluation
+docker compose run --rm cli batch urls.txt
 ```
 
 ### CLI Commands
@@ -72,6 +97,10 @@ uibench evaluate https://example.com --output pdf --save report.pdf
 ├── backend/           # FastAPI + MongoDB REST API
 ├── core/              # Python analysis engine
 ├── cli/               # Terminal-native CLI (Typer + Rich)
+│   ├── Dockerfile     # CLI container image
+│   ├── pyproject.toml # CLI package config
+│   ├── README.md      # CLI-specific docs
+│   └── CORE_INTEGRATION.md # How to wire real core
 ├── scripts/           # Setup and utility scripts
 ├── docker-compose.yml # Full stack orchestration
 └── README.md

@@ -35,9 +35,19 @@ services:
     networks:
       - uibench
 
-volumes:
+  cli:
+    build:
+      context: .
+      dockerfile: cli/Dockerfile
+    volumes:
+      - .:/app
+    command: ["--help"]
+    networks:
+      - uibench
+
+ volumes:
   mongo_data:
 
-networks:
+ networks:
   uibench:
     driver: bridge
