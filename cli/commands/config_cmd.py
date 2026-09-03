@@ -4,9 +4,9 @@ from pathlib import Path
 
 import typer
 
-from uibench_cli import config as config_module
-from uibench_cli.context import AppContext
-from uibench_cli.core.exceptions import UIBenchError
+from cli import config as config_module
+from cli.context import AppContext
+from cli.core.exceptions import UIBenchError
 
 config_app = typer.Typer(help="Manage configuration (.uibench.toml).")
 
@@ -37,7 +37,7 @@ def config_get(ctx: typer.Context, key: str = typer.Argument(..., help="Dotted k
     try:
         value = config_module.get_value(app_ctx.config, key)
     except UIBenchError as err:
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(app_ctx.console, err)
         raise typer.Exit(code=err.exit_code)
@@ -56,7 +56,7 @@ def config_set(
     try:
         config_module.set_value_in_file(target_path, key, value)
     except UIBenchError as err:
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(app_ctx.console, err)
         raise typer.Exit(code=err.exit_code)

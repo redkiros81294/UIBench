@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rich.console import Console
 
-from uibench_cli.core.exceptions import UIBenchError
+from cli.core.exceptions import UIBenchError
 
 
 def print_error(console: Console, err: UIBenchError) -> None:

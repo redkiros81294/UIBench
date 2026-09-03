@@ -1,4 +1,4 @@
-from uibench_cli.models import AnalyzerResult, EvaluationResult, status_for
+from cli.models import AnalyzerResult, EvaluationResult, status_for
 
 
 def test_status_for_pass():

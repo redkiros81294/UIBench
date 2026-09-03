@@ -7,10 +7,10 @@ from typing import Optional
 
 import typer
 
-from uibench_cli.commands.evaluate import build_options, render_result, run_evaluation
-from uibench_cli.context import AppContext
-from uibench_cli.core.exceptions import InvalidArgumentsError, UIBenchError
-from uibench_cli.output import validate_format
+from cli.commands.evaluate import build_options, render_result, run_evaluation
+from cli.context import AppContext
+from cli.core.exceptions import InvalidArgumentsError, UIBenchError
+from cli.output import validate_format
 
 
 def _snapshot(path: Path) -> dict[str, float]:
@@ -36,7 +36,7 @@ def _run_once(app_ctx: AppContext, path: Path, options, output_format: str, save
         result = run_evaluation(app_ctx, str(path), options)
         render_result(app_ctx, result, output_format, save)
     except UIBenchError as err:
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(app_ctx.console, err)
 
@@ -56,7 +56,7 @@ def watch_command(
         if not path.exists():
             raise InvalidArgumentsError(f"Path not found: {path}")
     except UIBenchError as err:
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(app_ctx.console, err)
         raise typer.Exit(code=err.exit_code)

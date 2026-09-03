@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from uibench_cli.models import EvaluationResult
+from cli.models import EvaluationResult
 
 DEFAULT_ANALYZERS = ["seo", "performance", "accessibility", "design", "nlp"]
 
@@ -52,7 +52,7 @@ class AnalyzerEngine(Protocol):
     (./my-project), exactly as typed on the command line — the engine
     decides how to dispatch based on that shape.
 
-    Raise uibench_cli.core.exceptions.NetworkError for unreachable hosts,
+    Raise cli.core.exceptions.NetworkError for unreachable hosts,
     CoreEngineError for missing dependencies or analyzer crashes. Any
     other exception is treated by the CLI as an unexpected core error
     (exit code 4) and surfaced with --verbose tracebacks.

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from rich.table import Table
 
-from uibench_cli.models import AnalyzerResult
-from uibench_cli.ui.icons import RenderOptions, status_glyph
+from cli.models import AnalyzerResult
+from cli.ui.icons import RenderOptions, status_glyph
 
 
 def build_analyzer_table(analyzers: list[AnalyzerResult], opts: RenderOptions) -> Table:

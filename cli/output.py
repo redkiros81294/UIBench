@@ -6,10 +6,10 @@ from typing import Any
 
 from rich.console import Console
 
-from uibench_cli.core.exceptions import CoreEngineError, InvalidArgumentsError
-from uibench_cli.models import EvaluationResult
-from uibench_cli.ui.icons import RenderOptions, status_glyph
-from uibench_cli.ui.table import build_analyzer_table
+from cli.core.exceptions import CoreEngineError, InvalidArgumentsError
+from cli.models import EvaluationResult
+from cli.ui.icons import RenderOptions, status_glyph
+from cli.ui.table import build_analyzer_table
 
 VALID_FORMATS = ("json", "text", "html", "pdf")
 

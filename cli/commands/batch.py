@@ -6,11 +6,11 @@ from typing import Optional
 import typer
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from uibench_cli.commands.evaluate import build_options, run_evaluation
-from uibench_cli.context import AppContext
-from uibench_cli.core.exceptions import InvalidArgumentsError, UIBenchError
-from uibench_cli.output import render_json_batch, validate_format, write_or_print
-from uibench_cli.ui.icons import RenderOptions, status_glyph
+from cli.commands.evaluate import build_options, run_evaluation
+from cli.context import AppContext
+from cli.core.exceptions import InvalidArgumentsError, UIBenchError
+from cli.output import render_json_batch, validate_format, write_or_print
+from cli.ui.icons import RenderOptions, status_glyph
 
 
 def _read_targets(file: Path) -> list[str]:
@@ -42,7 +42,7 @@ def batch_command(
         output_format = validate_format(output or app_ctx.output_format)
         targets = _read_targets(file)
     except UIBenchError as err:
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(app_ctx.console, err)
         raise typer.Exit(code=err.exit_code)
@@ -85,7 +85,7 @@ def batch_command(
         text = render_json_batch(results, pretty=app_ctx.console.is_terminal and save is None)
         write_or_print(text, app_ctx.console, save)
     elif output_format == "text":
-        from uibench_cli.output import render_text
+        from cli.output import render_text
 
         for result in results:
             render_text(result, app_ctx.console, opts)

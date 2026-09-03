@@ -21,11 +21,11 @@ watch = ["watchdog>=4.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-uibench = "uibench_cli.cli:main"
+uibench = "cli.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["uibench_cli*"]
+include = ["cli*"]

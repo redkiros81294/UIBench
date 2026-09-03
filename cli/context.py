@@ -6,7 +6,7 @@ from typing import Any
 
 from rich.console import Console
 
-from uibench_cli.core.engine import AnalyzerEngine
+from cli.core.engine import AnalyzerEngine
 
 
 @dataclass

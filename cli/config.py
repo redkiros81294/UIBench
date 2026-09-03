@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from uibench_cli.core.exceptions import ConfigError
+from cli.core.exceptions import ConfigError
 
 try:
     import tomllib  # Python 3.11+

@@ -11,9 +11,9 @@ import asyncio
 from pathlib import Path
 from typing import Optional
 
-from uibench_cli.core.engine import EvaluateOptions
-from uibench_cli.core.exceptions import CoreEngineError, NetworkError
-from uibench_cli.models import AnalyzerResult, EvaluationResult
+from cli.core.engine import EvaluateOptions
+from cli.core.exceptions import CoreEngineError, NetworkError
+from cli.models import AnalyzerResult, EvaluationResult
 
 try:
     from core.evaluators import RegistryPageEvaluator

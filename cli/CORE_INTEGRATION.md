@@ -4,21 +4,21 @@ The entire CLI — argument parsing, config, output formatting, colors,
 spinners, tables, error handling, exit codes — works against one seam:
 
 ```python
-uibench_cli/core/engine.py:AnalyzerEngine
+cli/core/engine.py:AnalyzerEngine
 ```
 
 Right now `cli.py` hands every command a `MockEngine`
-(`uibench_cli/core/mock_engine.py`), which fabricates deterministic
+(`cli/core/mock_engine.py`), which fabricates deterministic
 scores so the whole CLI is runnable and demoable without your backend.
 Replacing it is a two-step job.
 
 ## 1. Implement the protocol
 
 ```python
-# uibench_cli/core/real_engine.py
-from uibench_cli.core.engine import AnalyzerEngine, EvaluateOptions
-from uibench_cli.core.exceptions import NetworkError, CoreEngineError
-from uibench_cli.models import AnalyzerResult, EvaluationResult
+# cli/core/real_engine.py
+from cli.core.engine import AnalyzerEngine, EvaluateOptions
+from cli.core.exceptions import NetworkError, CoreEngineError
+from cli.models import AnalyzerResult, EvaluationResult
 
 class RealEngine:
     def evaluate(self, target: str, options: EvaluateOptions) -> EvaluationResult:
@@ -42,17 +42,17 @@ class RealEngine:
         ...
 ```
 
-`AnalyzerResult` and `EvaluationResult` (in `uibench_cli/models.py`) are
+`AnalyzerResult` and `EvaluationResult` (in `cli/models.py`) are
 plain dataclasses — construct them directly from whatever your pipeline
 returns. `EvaluationResult.overall_score` and `.status` are computed
 properties, so you never set them by hand.
 
 ## 2. Point the CLI at it
 
-In `uibench_cli/cli.py`, `main_callback`:
+In `cli/cli.py`, `main_callback`:
 
 ```python
-from uibench_cli.core.real_engine import RealEngine
+from cli.core.real_engine import RealEngine
 
 ctx.obj = AppContext(
     ...
@@ -73,7 +73,7 @@ can simply be an HTTP client hitting it — `AppContext.core_url` and
 `--token`, `UIBENCH_TOKEN`, and stored login credentials
 (`~/.config/uibench/credentials.json`, written by `uibench login`).
 
-`uibench_cli/commands/auth.py` has a placeholder `_request_token()`
+`cli/commands/auth.py` has a placeholder `_request_token()`
 hitting `POST {core_url}/api/auth/login` — point it at your real auth
 endpoint, or replace it entirely if auth works differently.
 

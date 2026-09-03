@@ -1,5 +1,5 @@
-from uibench_cli.core.engine import AnalyzerEngine, EvaluateOptions, DEFAULT_ANALYZERS
-from uibench_cli.core.exceptions import (
+from cli.core.engine import AnalyzerEngine, EvaluateOptions, DEFAULT_ANALYZERS
+from cli.core.exceptions import (
     UIBenchError,
     ThresholdBreachError,
     InvalidArgumentsError,

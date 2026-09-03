@@ -42,7 +42,7 @@ number), so demos and screenshots are reproducible.
 ## Project layout
 
 ```
-uibench_cli/
+cli/
   cli.py               Typer app: global flags, context assembly, command registration
   context.py           AppContext — the object every command receives via ctx.obj
   config.py            .uibench.toml loading (layered) / writing
@@ -83,7 +83,7 @@ uibench_cli/
 | 6 | Config error |
 
 Every non-zero exit prints `ERROR: <short>` / `<detail>` / `Run: <suggestion>`
-— see `uibench_cli/ui/errors.py` and `core/exceptions.py`.
+— see `cli/ui/errors.py` and `core/exceptions.py`.
 
 ## What's real vs. a stand-in
 

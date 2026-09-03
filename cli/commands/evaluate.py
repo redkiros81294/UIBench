@@ -5,11 +5,11 @@ from typing import Optional
 
 import typer
 
-from uibench_cli.context import AppContext
-from uibench_cli.core.engine import DEFAULT_ANALYZERS, EvaluateOptions
-from uibench_cli.core.exceptions import ThresholdBreachError, UIBenchError
-from uibench_cli.models import EvaluationResult
-from uibench_cli.output import (
+from cli.context import AppContext
+from cli.core.engine import DEFAULT_ANALYZERS, EvaluateOptions
+from cli.core.exceptions import ThresholdBreachError, UIBenchError
+from cli.models import EvaluationResult
+from cli.output import (
     render_html,
     render_json,
     render_pdf,
@@ -17,8 +17,8 @@ from uibench_cli.output import (
     validate_format,
     write_or_print,
 )
-from uibench_cli.ui.icons import RenderOptions
-from uibench_cli.ui.spinner import spinner
+from cli.ui.icons import RenderOptions
+from cli.ui.spinner import spinner
 
 
 def build_options(
@@ -76,7 +76,7 @@ def render_result(
 
             from rich.console import Console as _Console
 
-            from uibench_cli.theme import UIBENCH_THEME
+            from cli.theme import UIBENCH_THEME
 
             buf = StringIO()
             capture_console = _Console(file=buf, theme=UIBENCH_THEME, no_color=True, width=100)
@@ -122,7 +122,7 @@ def evaluate_command(
         result = run_evaluation(app_ctx, target, options)
         render_result(app_ctx, result, output_format, save)
     except UIBenchError as err:
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(app_ctx.console, err)
         raise typer.Exit(code=err.exit_code)

@@ -19,8 +19,8 @@ from typing import Optional
 
 import typer
 
-from uibench_cli.context import AppContext
-from uibench_cli.core.exceptions import AuthError, NetworkError
+from cli.context import AppContext
+from cli.core.exceptions import AuthError, NetworkError
 
 CREDENTIALS_PATH = Path.home() / ".config" / "uibench" / "credentials.json"
 
@@ -74,7 +74,7 @@ def login_command(
     try:
         token = _request_token(url, email, pw)
     except (NetworkError, AuthError) as err:
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(app_ctx.console, err)
         raise typer.Exit(code=err.exit_code)
@@ -100,7 +100,7 @@ def whoami_command(ctx: typer.Context) -> None:
             detail=f"No valid token for {app_ctx.core_url}.",
             suggestion=f"uibench login {app_ctx.core_url} you@example.com",
         )
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(app_ctx.console, err)
         raise typer.Exit(code=err.exit_code)

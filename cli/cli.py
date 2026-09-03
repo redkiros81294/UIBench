@@ -6,16 +6,16 @@ from typing import Optional
 
 import typer
 
-from uibench_cli import __version__, config as config_module
-from uibench_cli.commands.auth import login_command, logout_command, whoami_command
-from uibench_cli.commands.batch import batch_command
-from uibench_cli.commands.config_cmd import config_app
-from uibench_cli.commands.evaluate import evaluate_command
-from uibench_cli.commands.watch import watch_command
-from uibench_cli.context import AppContext
-from uibench_cli.core.exceptions import UIBenchError
-from uibench_cli.core.real_engine import RealEngine
-from uibench_cli.theme import build_console
+from cli import __version__, config as config_module
+from cli.commands.auth import login_command, logout_command, whoami_command
+from cli.commands.batch import batch_command
+from cli.commands.config_cmd import config_app
+from cli.commands.evaluate import evaluate_command
+from cli.commands.watch import watch_command
+from cli.context import AppContext
+from cli.core.exceptions import UIBenchError
+from cli.core.real_engine import RealEngine
+from cli.theme import build_console
 
 app = typer.Typer(
     name="uibench",
@@ -36,7 +36,7 @@ def _build_engine() -> object:
         return RealEngine()
     except Exception as exc:
         # Fallback to MockEngine when core is not installed
-        from uibench_cli.core.mock_engine import MockEngine
+        from cli.core.mock_engine import MockEngine
         return MockEngine()
 
 
@@ -64,7 +64,7 @@ def main_callback(
         cfg, cfg_path = config_module.load_config(config)
     except UIBenchError as err:
         console = build_console(no_color=no_color)
-        from uibench_cli.ui.errors import print_error
+        from cli.ui.errors import print_error
 
         print_error(console, err)
         raise typer.Exit(code=err.exit_code)
