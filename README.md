@@ -1,5 +1,7 @@
 # UIBench
 
+![UIBench](logo.png)
+
 UIBench is a web interface analysis and design system platform that provides automated reports on aesthetics, accessibility, and performance.
 
 ## Quick Start
