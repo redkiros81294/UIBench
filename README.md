@@ -2,138 +2,238 @@
 
 ![UIBench](logo.png)
 
-UIBench is a web interface analysis and design system platform that provides automated reports on aesthetics, accessibility, and performance.
+**UIBench** is a web interface analysis and design system platform that evaluates websites and digital products across aesthetics, accessibility, performance, SEO, security, and design-system consistency. It delivers actionable reports through a web dashboard, REST API, PDF exports, and a terminal-native CLI.
+
+---
+
+## Features
+
+- **Multi-format analysis** — SEO, accessibility, performance, security, NLP/content, and design-system token checks
+- **Flexible targets** — analyze live URLs or local project directories
+- **Multiple output formats** — interactive terminal cards, JSON, HTML, PDF, and text reports
+- **CI/CD ready** — scriptable CLI with stable exit codes, JSON output, and Docker support
+- **Interactive terminal UX** — analyzer cards, color-coded status, and an optional interactive analyzer picker
+- **Design-system awareness** — token consistency checks, spacing/typography audits, and drift detection
+- **Batch evaluation** — evaluate multiple URLs from a file with progress tracking
+- **Watch mode** — re-evaluate local projects automatically on file changes
+- **Configurable thresholds** — customize pass/fail criteria per analyzer
+- **PDF reports** — branded PDF exports with cover page, executive summary, and detailed analysis
+
+---
 
 ## Quick Start
 
-```bash
-# Clone and setup
-git clone <repository-url>
-cd uibench
+### Full Stack (Web Dashboard + API)
 
-# Full stack with Docker Compose
+```bash
+git clone https://github.com/redkiros81294/UIBench.git
+cd UIBench
 docker compose up --build
 ```
 
-## Lightweight CLI Setup
-
-For users who only need the command-line interface:
-
-### Option A: Quick test without full install
+### CLI Only
 
 ```bash
-# From repo root, using the existing venv we created:
-.venv/bin/uibench --help
-.venv/bin/uibench evaluate --help
-.venv/bin/uibench batch --help
-.venv/bin/uibench watch --help
-```
-
-### Option B: Install CLI package
-
-```bash
-# Clone repo
-git clone <repository-url>
-cd uibench
-
-# Install CLI package
+git clone https://github.com/redkiros81294/UIBench.git
+cd UIBench
 pip install -e cli/
-
-# Install Playwright browser (required for URL evaluation)
 playwright install chromium
-
-# Run CLI
 uibench --help
 ```
 
-### Option C: Run CLI in Docker
+### Docker (CLI)
 
 ```bash
-# Build and run CLI container
 docker compose run --rm cli --help
-
-# Evaluate a URL
-docker compose run --rm cli evaluate https://example.com
-
-# Batch evaluation
-docker compose run --rm cli batch urls.txt
 ```
 
-### CLI Commands
+---
+
+## CLI Usage
+
+### Evaluate a URL or Project
 
 ```bash
-# Evaluate a live URL (cards on TTY, JSON when piped)
+# Interactive terminal (cards by default)
 uibench evaluate https://example.com
 
-# Evaluate with specific analyzers
+# JSON output (ideal for piping/scripts)
+uibench evaluate https://example.com --output json
+
+# Specific analyzers
 uibench evaluate https://example.com --analyzer seo,performance
 
-# Run all analyzers without interactive picker
+# Run all analyzers without prompting
 uibench evaluate https://example.com --all
 
-# Accept default analyzer selection without prompting
+# Accept defaults without prompting
 uibench evaluate https://example.com -y
 
-# Batch evaluation from file
-uibench batch urls.txt
-
-# Watch a project directory for changes
-uibench watch ./my-project
-
-# Manage config
-uibench config show
+# Local project
+uibench evaluate ./my-project
 ```
 
-The CLI shows a startup banner when run in an interactive terminal. Use `--no-banner` to suppress it.
+### Batch Evaluation
+
+```bash
+uibench batch urls.txt --analyzer seo --output json | jq .
+```
+
+### Watch Mode
+
+```bash
+uibench watch ./my-app --output text
+```
+
+### Configuration
+
+```bash
+uibench config list
+uibench config set thresholds.seo 80
+```
 
 ### Output Formats
 
-The CLI supports multiple output formats via `--output`:
-
-- `json` — machine-readable (default when piped)
-- `text` — human-readable terminal output
-- `cards` — colorful per-analyzer cards (default on TTY)
-- `html` — standalone HTML report
-- `pdf` — branded PDF report (requires `reportlab`)
-
-Example:
-```bash
-uibench evaluate https://example.com --output pdf --save report.pdf
-```
+| Format | Description |
+|---|---|
+| `json` | Machine-readable (default when piped) |
+| `text` | Human-readable terminal table |
+| `cards` | Colorful per-analyzer cards (default on TTY) |
+| `html` | Standalone HTML report |
+| `pdf` | Branded PDF report (requires `reportlab`) |
 
 ### Interactive Analyzer Picker
 
-When running `uibench evaluate` interactively without `--analyzer` or `--skip`, an interactive picker appears (requires `questionary`):
+When running `uibench evaluate` interactively without `--analyzer` or `--skip`, an interactive picker lets you select analyzers with the spacebar. It only appears in interactive terminals — never in CI, scripts, or batch mode.
 
+Install the optional dependency:
 ```bash
-uibench evaluate https://example.com
+pip install -e cli/[interactive]
 ```
 
-Select analyzers with space, confirm with enter. The picker only fires in interactive terminals — it never appears in CI, scripts, or batch mode.
+---
 
 ## Project Structure
 
 ```
-├── frontend/          # SvelteKit + Vite + Tailwind SPA
-├── backend/           # FastAPI + MongoDB REST API
-├── core/              # Python analysis engine
-├── cli/               # Terminal-native CLI (Typer + Rich)
-│   ├── Dockerfile     # CLI container image
-│   ├── pyproject.toml # CLI package config
-│   ├── README.md      # CLI-specific docs
-│   └── CORE_INTEGRATION.md # How to wire real core
-├── scripts/           # Setup and utility scripts
-├── docker-compose.yml # Full stack orchestration
+├── frontend/                 # SvelteKit + Vite + Tailwind SPA
+│   └── src/
+│       ├── lib/             # Shared components, stores, i18n
+│       ├── routes/          # File-based routes
+│       └── app.html         # SvelteKit entrypoint
+├── backend/                  # FastAPI + MongoDB REST API
+│   └── app/
+│       ├── main.py          # FastAPI app entrypoint
+│       ├── routes/          # API route handlers
+│       ├── services/        # Business logic
+│       ├── models/          # Pydantic models
+│       └── middleware/      # Auth, CORS, logging
+├── core/                     # Python analysis engine
+│   ├── analyzers/           # Modular analyzer registry
+│   ├── evaluators/          # Page/project evaluators
+│   ├── models/              # AnalysisContext, AnalysisResponse
+│   ├── services/            # EvaluationService orchestration
+│   ├── utils/               # PDF export, helpers
+│   └── engine.py            # Core engine entrypoint
+├── cli/                      # Terminal-native CLI (Typer + Rich)
+│   ├── cli.py               # Typer app, global flags, command registration
+│   ├── commands/            # evaluate, batch, watch, config, auth
+│   ├── ui/                  # Cards, picker, spinner, icons, banner
+│   ├── output.py            # JSON, text, cards, HTML, PDF renderers
+│   ├── config.py            # .uibench.toml loading and writing
+│   ├── models.py            # AnalyzerResult, EvaluationResult
+│   ├── core/                # Engine protocol, MockEngine, RealEngine
+│   └── pyproject.toml       # CLI package config
+├── scripts/                  # Setup and utility scripts
+│   └── setup.py             # Interactive mode selection (fullstack/cli/core)
+├── docker-compose.yml        # Full stack orchestration
+├── requirements.txt          # Root Python dependencies
+├── pyproject.toml           # Root project metadata and tool config
+├── Makefile                 # Developer convenience targets
+├── ARCHITECTURE.md          # System design and data flow
+├── CONTRIBUTING.md          # Branch strategy and commit conventions
+├── CHANGELOG.md             # Version history
+├── LOGO_BRIEF.md            # Logo design brief for designers
 └── README.md
 ```
 
+---
+
 ## Documentation
 
-- `ARCHITECTURE.md` - System design and output contract
-- `CONTRIBUTING.md` - Branch strategy and commit conventions
-- `CHANGELOG.md` - Version history
-- `cli/CORE_INTEGRATION.md` - How to wire the real core into the CLI
+| Document | Description |
+|---|---|
+| `ARCHITECTURE.md` | System design, layer boundaries, data flow, environment variables |
+| `CONTRIBUTING.md` | Branch strategy, commit conventions, PR process |
+| `CHANGELOG.md` | Version history and release notes |
+| `cli/CORE_INTEGRATION.md` | How to wire the real core engine into the CLI |
+| `LOGO_BRIEF.md` | Logo design brief for designers |
+
+---
+
+## Development
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+ (for frontend)
+- Docker & Docker Compose (optional, for containerized setup)
+
+### Setup
+
+```bash
+# Full stack
+make dev
+
+# Backend only
+make backend-start
+
+# Frontend only
+make frontend-start
+
+# CLI only
+make cli-install
+```
+
+### Testing
+
+```bash
+# Backend tests
+cd backend && python -m pytest tests/ -v
+
+# CLI tests
+cd cli && pytest
+```
+
+### Linting
+
+```bash
+mypy --strict core/ cli/
+ruff format core/ cli/
+```
+
+---
+
+## Deployment
+
+UIBench is containerized with multi-stage Docker builds. See `docker-compose.yml` for the full stack, or `cli/Dockerfile` for a standalone CLI container.
+
+```bash
+# Build all services
+docker compose build
+
+# Run full stack
+docker compose up --build
+```
+
+---
 
 ## License
 
-MIT
+MIT — see `LICENSE` for details.
+
+---
+
+## Contributing
+
+Contributions are welcome. Please read `CONTRIBUTING.md` for branch naming, commit conventions, and the PR process.
