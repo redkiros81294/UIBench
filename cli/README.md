@@ -36,6 +36,22 @@ uibench config list
 uibench config set thresholds.seo 80
 ```
 
+### Startup banner
+
+When run in an interactive terminal, uibench prints a short banner:
+
+```
+📊  UIBench — Web Interface Analysis & Design System Platform
+version 1.0.0
+```
+
+The banner is suppressed when:
+- `--quiet` is passed
+- `--no-banner` is passed
+- output is piped or redirected
+
+Use `--no-banner` to disable it permanently in scripts or CI.
+
 ### Output formats
 
 | Format | When to use |

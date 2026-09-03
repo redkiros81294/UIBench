@@ -16,6 +16,8 @@ from cli.context import AppContext
 from cli.core.exceptions import UIBenchError
 from cli.core.real_engine import RealEngine
 from cli.theme import build_console
+from cli.ui.banner import render_banner
+from cli.ui.icons import RenderOptions
 
 app = typer.Typer(
     name="uibench",
@@ -44,11 +46,12 @@ def _build_engine() -> object:
 def main_callback(
     ctx: typer.Context,
     config: Optional[Path] = typer.Option(None, "--config", help="Path to config file."),
-    output: str = typer.Option("json", "--output", help="json | html | pdf | text"),
+    output: str = typer.Option("json", "--output", help="json | html | pdf | text | cards"),
     quiet: bool = typer.Option(False, "--quiet", help="Suppress non-essential output."),
     verbose: bool = typer.Option(False, "--verbose", help="Enable debug logging."),
     no_color: bool = typer.Option(False, "--no-color", help="Disable ANSI colors."),
     no_unicode: bool = typer.Option(False, "--no-unicode", help="Use ASCII status markers instead of emoji."),
+    no_banner: bool = typer.Option(False, "--no-banner", help="Suppress the startup banner."),
     core_url: str = typer.Option("http://localhost:8000", "--core-url", help="Remote core API endpoint."),
     token: Optional[str] = typer.Option(None, "--token", envvar="UIBENCH_TOKEN", help="Bearer token for remote core."),
     version: Optional[bool] = typer.Option(
@@ -85,7 +88,11 @@ def main_callback(
         unicode_enabled=unicode_enabled,
         core_url=core_url,
         token=token or cfg.get("backend", {}).get("token") or None,
+        no_banner=no_banner,
     )
+
+    if not quiet and not no_banner:
+        render_banner(console, RenderOptions(unicode=unicode_enabled))
 
 
 app.command("evaluate")(evaluate_command)

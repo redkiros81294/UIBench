@@ -82,6 +82,8 @@ uibench watch ./my-project
 uibench config show
 ```
 
+The CLI shows a startup banner when run in an interactive terminal. Use `--no-banner` to suppress it.
+
 ### Output Formats
 
 The CLI supports multiple output formats via `--output`:

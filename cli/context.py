@@ -22,3 +22,4 @@ class AppContext:
     unicode_enabled: bool
     core_url: str
     token: str | None
+    no_banner: bool = False
